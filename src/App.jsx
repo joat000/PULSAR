@@ -144,7 +144,12 @@ export default function Pulsar() {
   const [flash, setFlash] = useState(null);
   const [priceLog, setPriceLog] = useState([]);
   const [tz, setTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [tzSearch, setTzSearch] = useState("");
   const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
+  const filteredTZ = useMemo(() =>
+    tzSearch.trim() === "" ? ALL_TZ : ALL_TZ.filter(z => z.toLowerCase().includes(tzSearch.toLowerCase())),
+    [ALL_TZ, tzSearch]
+  );
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -491,22 +496,39 @@ export default function Pulsar() {
             <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2 }}>◧ Price Record Log</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 10, color: "#4b5563" }}>{priceLog.length} records · {POLL_MS / 1000}s interval</span>
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
-                <select
-                  value={tz}
-                  onChange={e => setTz(e.target.value)}
-                  style={{
-                    background: "#080d18", border: "1px solid #1e293b", color: "#a5b4fc",
-                    borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
-                    fontFamily: "inherit", cursor: "pointer", outline: "none",
-                    maxWidth: 220, appearance: "none", WebkitAppearance: "none",
-                  }}
-                >
-                  {ALL_TZ.map(z => (
-                    <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
-                  ))}
-                </select>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, pointerEvents: "none" }}>🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search timezone…"
+                    value={tzSearch}
+                    onChange={e => setTzSearch(e.target.value)}
+                    style={{
+                      background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0",
+                      borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
+                      fontFamily: "inherit", outline: "none", width: 160,
+                    }}
+                  />
+                </div>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
+                  <select
+                    value={filteredTZ.includes(tz) ? tz : filteredTZ[0] ?? tz}
+                    onChange={e => { setTz(e.target.value); setTzSearch(""); }}
+                    style={{
+                      background: "#080d18", border: "1px solid #1e293b", color: "#a5b4fc",
+                      borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
+                      fontFamily: "inherit", cursor: "pointer", outline: "none",
+                      maxWidth: 200, appearance: "none", WebkitAppearance: "none",
+                    }}
+                  >
+                    {filteredTZ.map(z => (
+                      <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
+                    ))}
+                    {filteredTZ.length === 0 && <option disabled>No matches</option>}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
