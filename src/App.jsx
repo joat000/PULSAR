@@ -143,6 +143,8 @@ export default function Pulsar() {
   const [range, setRange] = useState("1D");
   const [flash, setFlash] = useState(null);
   const [priceLog, setPriceLog] = useState([]);
+  const [tz, setTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -485,15 +487,34 @@ export default function Pulsar() {
 
         {/* ── Price history table ── */}
         <div className="card" style={{ padding: "22px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
             <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2 }}>◧ Price Record Log</div>
-            <div style={{ fontSize: 10, color: "#4b5563" }}>{priceLog.length} records · updates every {POLL_MS / 1000}s</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 10, color: "#4b5563" }}>{priceLog.length} records · {POLL_MS / 1000}s interval</span>
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
+                <select
+                  value={tz}
+                  onChange={e => setTz(e.target.value)}
+                  style={{
+                    background: "#080d18", border: "1px solid #1e293b", color: "#a5b4fc",
+                    borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
+                    fontFamily: "inherit", cursor: "pointer", outline: "none",
+                    maxWidth: 220, appearance: "none", WebkitAppearance: "none",
+                  }}
+                >
+                  {ALL_TZ.map(z => (
+                    <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
           <div style={{ overflowY: "auto", maxHeight: 420 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, background: "#0b1220", zIndex: 1 }}>
                 <tr>
-                  {["#", "Price", "Change", "Date", "Time (UTC)"].map(h => (
+                  {["#", "Price", "Change", "Date", "Time"].map(h => (
                     <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "8px 14px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -516,10 +537,13 @@ export default function Pulsar() {
                         ) : <span style={{ color: "#374151" }}>—</span>}
                       </td>
                       <td style={{ padding: "7px 14px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11, whiteSpace: "nowrap" }}>
-                        {ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: tz })}
                       </td>
                       <td style={{ padding: "7px 14px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11, whiteSpace: "nowrap" }}>
-                        {ts.toISOString().slice(11, 19)} UTC
+                        {ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: tz })}
+                        <span style={{ color: "#374151", marginLeft: 4, fontSize: 10 }}>
+                          {tz === "UTC" ? "UTC" : new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: tz }).formatToParts(ts).find(p => p.type === "timeZoneName")?.value}
+                        </span>
                       </td>
                     </tr>
                   );
