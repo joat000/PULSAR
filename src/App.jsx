@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { LineChart, Line, Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const FINNHUB_KEY = "d8ongu9r01qn89hse3p0d8ongu9r01qn89hse3pg";
@@ -127,7 +127,7 @@ function ChartTooltip({ active, payload, label, range }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: "#080d18", border: "1px solid #2d1f6e", borderRadius: 8, padding: "8px 14px" }}>
-      <div style={{ color: "#7c6bc4", fontSize: 11, marginBottom: 2 }}>{xTick(label, range)}</div>
+      <div style={{ color: "#8b7fd4", fontSize: 11, marginBottom: 2 }}>{xTick(label, range)}</div>
       <div style={{ color: "#e2e8f0", fontWeight: 700, fontSize: 15 }}>${fmt2(payload[0]?.value)}</div>
     </div>
   );
@@ -150,16 +150,16 @@ function StatCard({ label, value, sub, accent, flash }) {
     <div className={`card${flash === "up" ? " flash-up" : flash === "down" ? " flash-down" : ""}`}
       style={{ padding: "18px 22px", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%", background: accent || "radial-gradient(circle,#1e1040,transparent)", opacity: 0.6 }} />
-      <div style={{ fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 8 }}>{label}</div>
       <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, color: "#f1f5f9", letterSpacing: "-0.5px" }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
 
 function LoadingPulse() {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 260, gap: 12, color: "#374151", fontSize: 13 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 260, gap: 12, color: "#6b7280", fontSize: 13 }}>
       <div style={{ width: 14, height: 14, border: "2px solid #7c3aed", borderTopColor: "transparent", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
       Fetching live data from Finnhub…
     </div>
@@ -316,26 +316,33 @@ export default function Pulsar() {
   const patternColor = n => ({ Uptrend:"#34d399", Downtrend:"#f87171", Breakout:"#fbbf24", "Support Level":"#60a5fa", "Resistance Level":"#a78bfa", Consolidation:"#94a3b8" }[n] ?? "#e2e8f0");
   const RANGES = ["1D","1W","1M","ALL"];
 
+  const stars = useMemo(() => Array.from({ length: 90 }, (_, i) => ({
+    key: i,
+    size: Math.random() > 0.88 ? 2 : 1,
+    opacity: 0.08 + Math.random() * 0.45,
+    top: `${Math.random() * 100}%`,
+    left: `${Math.random() * 100}%`,
+    dur: `${2.5 + Math.random() * 5}s`,
+    delay: `${Math.random() * 5}s`,
+  })), []);
+
   return (
     <div style={{ minHeight: "100vh", background: "#060a12", color: "#e2e8f0", fontFamily: "'Inter', system-ui, sans-serif", overflowX: "hidden" }}>
 
       {/* Stars */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
-        {Array.from({ length: 90 }).map((_, i) => (
-          <div key={i} style={{
+        {stars.map(s => (
+          <div key={s.key} style={{
             position: "absolute",
-            width: Math.random() > 0.88 ? 2 : 1,
-            height: Math.random() > 0.88 ? 2 : 1,
+            width: s.size, height: s.size,
             borderRadius: "50%",
             background: "#fff",
-            opacity: 0.08 + Math.random() * 0.45,
-            top: `${Math.random() * 100}%`,
-            left: `${Math.random() * 100}%`,
-            animation: `twinkle ${2.5 + Math.random() * 5}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 5}s`,
+            opacity: s.opacity,
+            top: s.top, left: s.left,
+            animation: `twinkle ${s.dur} ease-in-out infinite`,
+            animationDelay: s.delay,
           }} />
         ))}
-        {/* Nebula glow */}
         <div style={{ position: "absolute", top: "10%", left: "60%", width: 400, height: 300, background: "radial-gradient(ellipse,#7c3aed08,transparent 70%)", borderRadius: "50%" }} />
         <div style={{ position: "absolute", bottom: "20%", left: "5%", width: 300, height: 200, background: "radial-gradient(ellipse,#1d4ed808,transparent 70%)", borderRadius: "50%" }} />
       </div>
@@ -347,6 +354,7 @@ export default function Pulsar() {
         @keyframes flash-up   { 0%{background:#064e3b66} 100%{background:transparent} }
         @keyframes flash-down { 0%{background:#7f1d1d55} 100%{background:transparent} }
         @keyframes glow-pulse { 0%,100%{box-shadow:0 0 6px #7c3aed33} 50%{box-shadow:0 0 18px #7c3aed77,0 0 32px #7c3aed22} }
+        @keyframes dot-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:.5} }
         .card { background:linear-gradient(145deg,#0b1220dd,#0e1628dd); border:1px solid #161f35; border-radius:14px; backdrop-filter:blur(8px); transition:border-color .2s; }
         .card:hover { border-color:#1e2d50; }
         .flash-up   { animation:flash-up   .8s ease-out; }
@@ -368,12 +376,12 @@ export default function Pulsar() {
               <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 21, fontWeight: 700, letterSpacing: "-0.5px", background: "linear-gradient(90deg,#a78bfa,#60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 PULSAR
               </div>
-              <div style={{ fontSize: 10, color: "#374151", letterSpacing: 2.5, textTransform: "uppercase" }}>Live Market Intelligence</div>
+              <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2.5, textTransform: "uppercase" }}>Live Market Intelligence</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: marketStatus === "Open" ? "#34d399" : "#fbbf24", boxShadow: `0 0 7px ${marketStatus === "Open" ? "#34d399" : "#fbbf24"}` }} />
-            <span style={{ fontSize: 12, color: "#374151" }}>{marketStatus} · SPCX</span>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: marketStatus === "Open" ? "#34d399" : "#fbbf24", boxShadow: `0 0 8px ${marketStatus === "Open" ? "#34d399" : "#fbbf24"}`, animation: "dot-pulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>{marketStatus} · SPCX</span>
           </div>
         </div>
 
@@ -400,7 +408,7 @@ export default function Pulsar() {
                   <span style={{ fontSize: 15, fontWeight: 600, color: isUp ? "#34d399" : "#f87171" }}>
                     {isUp ? "▲" : "▼"} {isUp && change > 0 ? "+" : ""}{fmt2(change)} ({isUp && changePct > 0 ? "+" : ""}{changePct?.toFixed(2)}%)
                   </span>
-                  <span style={{ fontSize: 11, color: "#1f2937" }}>vs prev close</span>
+                  <span style={{ fontSize: 11, color: "#6b7280" }}>vs prev close</span>
                 </>
               )}
             </div>
@@ -408,7 +416,7 @@ export default function Pulsar() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", textAlign: "right" }}>
             {[["Open", fmt2(open)], ["Prev Close", fmt2(prevClose)], ["High", fmt2(high)], ["Low", fmt2(low)]].map(([l, v]) => (
               <div key={l}>
-                <div style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: 1.2 }}>{l}</div>
+                <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.2 }}>{l}</div>
                 <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 600, color: "#94a3b8" }}>${v}</div>
               </div>
             ))}
@@ -418,8 +426,8 @@ export default function Pulsar() {
         {/* ── Stat cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}>
           <StatCard label="Market Cap" value={mktCap} sub={profile?.name ?? "Space Exploration Technologies"} accent="radial-gradient(circle,#4c1d9522,transparent)" />
-          <StatCard label="52W High" value={`$${fmt2(quote?.h ?? null)}`} sub="Intraday high" accent="radial-gradient(circle,#14532d22,transparent)" />
-          <StatCard label="52W Low" value={`$${fmt2(quote?.l ?? null)}`} sub="Intraday low" accent="radial-gradient(circle,#7f1d1d22,transparent)" />
+          <StatCard label="Day High" value={quote?.h ? `$${fmt2(quote.h)}` : "—"} sub="Intraday high" accent="radial-gradient(circle,#14532d22,transparent)" />
+          <StatCard label="Day Low" value={quote?.l ? `$${fmt2(quote.l)}` : "—"} sub="Intraday low" accent="radial-gradient(circle,#7f1d1d22,transparent)" />
           <StatCard label="Last Update" value={lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"} sub={`Polls every ${POLL_MS / 1000}s`} accent="radial-gradient(circle,#1e3a5f22,transparent)" />
         </div>
 
@@ -427,7 +435,7 @@ export default function Pulsar() {
         <div className="card" style={{ padding: "22px 22px 18px", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
             <div>
-              <div style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: 2, marginBottom: 3 }}>Price Chart · SPCX</div>
+              <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 3 }}>Price Chart · SPCX</div>
               <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 600, color: "#c7d2fe" }}>
                 {price ? `$${fmt2(price)}` : "Loading…"}
               </div>
@@ -441,32 +449,36 @@ export default function Pulsar() {
 
           {chartLoading || loading ? <LoadingPulse /> : (
             <ResponsiveContainer width="100%" height={248}>
-              <LineChart data={chartData} margin={{ top: 4, right: 2, bottom: 0, left: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 2, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="lg" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0%" stopColor="#6d28d9" />
                     <stop offset="100%" stopColor="#2563eb" />
                   </linearGradient>
+                  <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6d28d9" stopOpacity={0.18} />
+                    <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                  </linearGradient>
                 </defs>
-                <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#1f2937", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={55} />
-                <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#1f2937", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={50} />
+                <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={55} />
+                <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={50} />
                 <Tooltip content={<ChartTooltip range={range} />} />
-                {price && <ReferenceLine y={price} stroke="#312e8133" strokeDasharray="3 4" />}
-                <Line type="monotone" dataKey="price" stroke="url(#lg)" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#a78bfa", strokeWidth: 0 }} />
-              </LineChart>
+                {price && <ReferenceLine y={price} stroke="#312e8155" strokeDasharray="3 4" />}
+                <Area type="monotone" dataKey="price" stroke="url(#lg)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 4, fill: "#a78bfa", strokeWidth: 0 }} />
+              </AreaChart>
             </ResponsiveContainer>
           )}
 
-          <div style={{ marginTop: 10, fontSize: 10, color: "#111827", textAlign: "right" }}>
+          <div style={{ marginTop: 10, fontSize: 10, color: "#4b5563", textAlign: "right" }}>
             {chartData.length} data points · Finnhub · 15-min delayed outside market hours
           </div>
         </div>
 
         {/* ── Patterns ── */}
         <div className="card" style={{ padding: "22px", marginBottom: 18 }}>
-          <div style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: 2, marginBottom: 18 }}>⬡ Pattern Recognition</div>
+          <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 18 }}>⬡ Pattern Recognition</div>
           {patterns.length === 0 ? (
-            <div style={{ color: "#1f2937", fontSize: 13 }}>Accumulating price data for pattern analysis…</div>
+            <div style={{ color: "#6b7280", fontSize: 13 }}>Accumulating price data for pattern analysis…</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
               {patterns.slice(0, 6).map((p, i) => (
@@ -477,7 +489,7 @@ export default function Pulsar() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: "#c7d2fe" }}>{p.pattern_name}</span>
                       {p.level && <span style={{ fontSize: 11, color: "#374151" }}>${fmt2(p.level)}</span>}
                     </div>
-                    <span style={{ fontSize: 10, color: "#1f2937" }}>{fmtTime(p.detected_at)}</span>
+                    <span style={{ fontSize: 10, color: "#6b7280" }}>{fmtTime(p.detected_at)}</span>
                   </div>
                   <ConfBar value={p.confidence} />
                 </div>
@@ -488,36 +500,36 @@ export default function Pulsar() {
 
         {/* ── Price history table ── */}
         <div className="card" style={{ padding: "22px" }}>
-          <div style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>◧ Price Record Log</div>
+          <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>◧ Price Record Log</div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
                   {["ID", "Symbol", "Price", "Timestamp"].map(h => (
-                    <th key={h} style={{ textAlign: "left", color: "#1f2937", fontWeight: 600, padding: "7px 12px", borderBottom: "1px solid #0f172a", letterSpacing: 1, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+                    <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "7px 12px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {[...DB.price_history].reverse().slice(0, 15).map(r => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #080d18" }}>
-                    <td style={{ padding: "8px 12px", color: "#111827", fontVariantNumeric: "tabular-nums" }}>{r.id}</td>
+                    <td style={{ padding: "8px 12px", color: "#4b5563", fontVariantNumeric: "tabular-nums" }}>{r.id}</td>
                     <td style={{ padding: "8px 12px" }}>
                       <span style={{ background: "#0f0a2e", color: "#7c6bc4", borderRadius: 5, padding: "2px 8px", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>{r.symbol}</span>
                     </td>
                     <td style={{ padding: "8px 12px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, color: "#818cf8", fontVariantNumeric: "tabular-nums" }}>${fmt2(r.price)}</td>
-                    <td style={{ padding: "8px 12px", color: "#1f2937", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{r.timestamp.replace("T"," ").slice(0,19)} UTC</td>
+                    <td style={{ padding: "8px 12px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{r.timestamp.replace("T"," ").slice(0,19)} UTC</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div style={{ marginTop: 10, fontSize: 10, color: "#0f172a" }}>
+          <div style={{ marginTop: 10, fontSize: 10, color: "#4b5563" }}>
             {DB.price_history.length} total records · append-only · no overwrites · sourced from Finnhub
           </div>
         </div>
 
-        <div style={{ marginTop: 20, textAlign: "center", fontSize: 10, color: "#111827", letterSpacing: 1.5 }}>
+        <div style={{ marginTop: 20, textAlign: "center", fontSize: 10, color: "#4b5563", letterSpacing: 1.5 }}>
           PULSAR · SPCX · DATA BY FINNHUB · {new Date().getFullYear()}
         </div>
       </div>
