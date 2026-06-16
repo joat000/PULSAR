@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { LineChart, Line, Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from "recharts";
 import { dbInsertPrice, dbInsertPattern, dbLoadPriceHistory, dbLoadPatterns } from "./supabase.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -127,12 +127,20 @@ function xTick(iso, range) {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, range }) {
+function ChartTooltip({ active, payload, label, range, startPrice }) {
   if (!active || !payload?.length) return null;
+  const val = payload[0]?.value;
+  const delta = startPrice ? val - startPrice : null;
+  const deltaUp = delta >= 0;
   return (
-    <div style={{ background: "#080d18", border: "1px solid #2d1f6e", borderRadius: 8, padding: "8px 14px" }}>
-      <div style={{ color: "#8b7fd4", fontSize: 11, marginBottom: 2 }}>{xTick(label, range)}</div>
-      <div style={{ color: "#e2e8f0", fontWeight: 700, fontSize: 15 }}>${fmt2(payload[0]?.value)}</div>
+    <div style={{ background: "#0b1220", border: "1px solid #1e2d50", borderRadius: 10, padding: "10px 16px", boxShadow: "0 8px 24px #00000066" }}>
+      <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 4, letterSpacing: 1 }}>{xTick(label, range)}</div>
+      <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 18, fontFamily: "'Space Grotesk',sans-serif", letterSpacing: "-0.5px" }}>${fmt2(val)}</div>
+      {delta !== null && (
+        <div style={{ fontSize: 11, color: deltaUp ? "#34d399" : "#f87171", marginTop: 3 }}>
+          {deltaUp ? "▲" : "▼"} {deltaUp && delta > 0 ? "+" : ""}{fmt2(delta)} from open
+        </div>
+      )}
     </div>
   );
 }
@@ -377,10 +385,7 @@ export default function Pulsar() {
         .card:hover { border-color:#1e2d50; }
         .flash-up   { animation:flash-up   .8s ease-out; }
         .flash-down { animation:flash-down .8s ease-out; }
-        .range-btn { background:transparent; border:1px solid #161f35; color:#4b5563; cursor:pointer; border-radius:8px; padding:5px 13px; font-size:12px; font-weight:600; font-family:inherit; transition:all .18s; letter-spacing:.5px; }
-        .range-btn.active { background:#170d38; border-color:#5b21b6; color:#a78bfa; box-shadow:0 0 10px #7c3aed33; }
-        .range-btn:hover:not(.active) { border-color:#1e2d50; color:#6b7280; }
-        ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:#060a12} ::-webkit-scrollbar-thumb{background:#161f35;border-radius:2px}
+::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:#060a12} ::-webkit-scrollbar-thumb{background:#161f35;border-radius:2px}
         * { box-sizing: border-box; }
       `}</style>
 
@@ -450,45 +455,85 @@ export default function Pulsar() {
         </div>
 
         {/* ── Chart ── */}
-        <div className="card" style={{ padding: "22px 22px 18px", marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+        <div className="card" style={{ padding: "22px 22px 14px", marginBottom: 18 }}>
+          {/* Header row */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
             <div>
-              <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 3 }}>Price Chart · SPCX</div>
-              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 600, color: "#c7d2fe" }}>
-                {price ? `$${fmt2(price)}` : "Loading…"}
+              <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 4 }}>Price Chart · SPCX</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700, color: "#f1f5f9", letterSpacing: "-0.5px" }}>
+                  {price ? `$${fmt2(price)}` : "—"}
+                </div>
+                {chartData.length >= 2 && (() => {
+                  const first = chartData[0].price;
+                  const last  = chartData[chartData.length - 1].price;
+                  const d = last - first;
+                  const dp = (d / first) * 100;
+                  const up = d >= 0;
+                  return (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: up ? "#34d399" : "#f87171" }}>
+                      {up ? "▲" : "▼"} {up && d > 0 ? "+" : ""}{fmt2(d)} ({up && dp > 0 ? "+" : ""}{dp.toFixed(2)}%) {range}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 7 }}>
+            {/* Range buttons */}
+            <div style={{ display: "flex", gap: 6, background: "#080d18", borderRadius: 10, padding: 4 }}>
               {RANGES.map(r => (
-                <button key={r} className={`range-btn${range === r ? " active" : ""}`} onClick={() => setRange(r)}>{r}</button>
+                <button key={r} onClick={() => setRange(r)} style={{
+                  background: range === r ? "linear-gradient(135deg,#170d38,#0f1a35)" : "transparent",
+                  border: range === r ? "1px solid #5b21b6" : "1px solid transparent",
+                  color: range === r ? "#a78bfa" : "#4b5563",
+                  cursor: "pointer", borderRadius: 7, padding: "5px 14px",
+                  fontSize: 11, fontWeight: 700, fontFamily: "inherit",
+                  letterSpacing: 0.5, transition: "all .15s",
+                  boxShadow: range === r ? "0 0 10px #7c3aed22" : "none",
+                }}>{r}</button>
               ))}
             </div>
           </div>
 
           {chartLoading || loading ? <LoadingPulse /> : (
-            <ResponsiveContainer width="100%" height={248}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 2, bottom: 0, left: 0 }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                 <defs>
-                  <linearGradient id="lg" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#6d28d9" />
-                    <stop offset="100%" stopColor="#2563eb" />
-                  </linearGradient>
-                  <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6d28d9" stopOpacity={0.18} />
-                    <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
-                  </linearGradient>
+                  {/* Dynamic stroke: green if range is up, red if down */}
+                  {(() => {
+                    const first = chartData[0]?.price ?? 0;
+                    const last  = chartData[chartData.length - 1]?.price ?? 0;
+                    const up = last >= first;
+                    const c1 = up ? "#059669" : "#dc2626";
+                    const c2 = up ? "#34d399" : "#f87171";
+                    const f1 = up ? "#059669" : "#dc2626";
+                    return (
+                      <>
+                        <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor={c1} />
+                          <stop offset="100%" stopColor={c2} />
+                        </linearGradient>
+                        <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={f1} stopOpacity={0.2} />
+                          <stop offset="85%" stopColor={f1} stopOpacity={0.02} />
+                          <stop offset="100%" stopColor={f1} stopOpacity={0} />
+                        </linearGradient>
+                      </>
+                    );
+                  })()}
                 </defs>
-                <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={55} />
-                <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={50} />
-                <Tooltip content={<ChartTooltip range={range} />} />
-                {price && <ReferenceLine y={price} stroke="#312e8155" strokeDasharray="3 4" />}
-                <Area type="monotone" dataKey="price" stroke="url(#lg)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 4, fill: "#a78bfa", strokeWidth: 0 }} />
+                <CartesianGrid vertical={false} stroke="#0f172a" strokeDasharray="0" />
+                <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={60} dy={6} />
+                <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={56} />
+                <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} />} cursor={{ stroke: "#1e2d50", strokeWidth: 1, strokeDasharray: "4 3" }} />
+                {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `$${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
+                <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 5, fill: "#a78bfa", stroke: "#1e1040", strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
 
-          <div style={{ marginTop: 10, fontSize: 10, color: "#4b5563", textAlign: "right" }}>
-            {chartData.length} data points · Finnhub · 15-min delayed outside market hours
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", fontSize: 10, color: "#374151" }}>
+            <span>{chartData.length} data points</span>
+            <span>Finnhub · 15-min delayed outside market hours</span>
           </div>
         </div>
 
