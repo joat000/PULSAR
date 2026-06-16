@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LineChart, Line, Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { dbInsertPrice, dbInsertPattern, dbLoadPriceHistory, dbLoadPatterns } from "./supabase.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const FINNHUB_KEY = "d8ongu9r01qn89hse3p0d8ongu9r01qn89hse3pg";
@@ -15,25 +16,28 @@ const DB = {
 };
 
 function insertPrice(price, timestamp) {
-  // Never overwrite — always insert new record
   const ts = timestamp || new Date().toISOString();
-  // Avoid duplicate timestamps
   if (DB.price_history.length > 0) {
     const last = DB.price_history[DB.price_history.length - 1];
     if (last.price === price && last.timestamp.slice(0, 16) === ts.slice(0, 16)) return;
   }
-  DB.price_history.push({
+  const record = {
     id: DB.nextId++,
     stock_id: 1,
     symbol: SYMBOL,
     price: parseFloat(price.toFixed(2)),
     timestamp: ts,
-  });
+  };
+  DB.price_history.push(record);
+  // Persist to Supabase (fire-and-forget)
+  dbInsertPrice(SYMBOL, record.price, ts);
 }
 
 function insertPattern(p) {
   DB.patterns.unshift({ id: DB.nextId++, stock_id: 1, ...p });
   if (DB.patterns.length > 30) DB.patterns.pop();
+  // Persist to Supabase (fire-and-forget)
+  dbInsertPattern(p.pattern_name, p.confidence, p.detected_at, p.level ?? null);
 }
 
 function getHistoryForRange(range) {
@@ -275,6 +279,20 @@ export default function Pulsar() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+
+      // Seed in-memory DB from Supabase persisted history
+      const [rows, savedPatterns] = await Promise.all([
+        dbLoadPriceHistory(SYMBOL, 500),
+        dbLoadPatterns(30),
+      ]);
+      rows.forEach(r => {
+        DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
+      });
+      savedPatterns.forEach(p => {
+        DB.patterns.push({ id: DB.nextId++, stock_id: 1, pattern_name: p.pattern_name, confidence: p.confidence, level: p.level, detected_at: p.detected_at });
+      });
+      if (savedPatterns.length) setPatterns([...DB.patterns.slice(0, 6)]);
+
       try {
         const [, p] = await Promise.all([fetchLive(), fetchProfile()]);
         setProfile(p);
