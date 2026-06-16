@@ -142,6 +142,7 @@ export default function Pulsar() {
   const [chartData, setChartData] = useState([]);
   const [range, setRange] = useState("1D");
   const [flash, setFlash] = useState(null);
+  const [priceLog, setPriceLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -217,6 +218,7 @@ export default function Pulsar() {
       setLastUpdated(new Date());
 
       insertPrice(q.c);
+      setPriceLog([...DB.price_history].reverse());
 
       // Market status
       const hour = new Date().getUTCHours();
@@ -245,6 +247,7 @@ export default function Pulsar() {
         .forEach(r => {
           DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
         });
+      setPriceLog([...DB.price_history].reverse());
 
       try {
         const [, p] = await Promise.all([fetchLive(), fetchProfile()]);
@@ -480,34 +483,52 @@ export default function Pulsar() {
           </div>
         </div>
 
-{/* ── Price history table ── */}
+        {/* ── Price history table ── */}
         <div className="card" style={{ padding: "22px" }}>
-          <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>◧ Price Record Log</div>
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2 }}>◧ Price Record Log</div>
+            <div style={{ fontSize: 10, color: "#4b5563" }}>{priceLog.length} records · updates every {POLL_MS / 1000}s</div>
+          </div>
+          <div style={{ overflowY: "auto", maxHeight: 420 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
+              <thead style={{ position: "sticky", top: 0, background: "#0b1220", zIndex: 1 }}>
                 <tr>
-                  {["ID", "Symbol", "Price", "Timestamp"].map(h => (
-                    <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "7px 12px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+                  {["#", "Price", "Change", "Date", "Time (UTC)"].map(h => (
+                    <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "8px 14px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[...DB.price_history].reverse().slice(0, 15).map(r => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #080d18" }}>
-                    <td style={{ padding: "8px 12px", color: "#4b5563", fontVariantNumeric: "tabular-nums" }}>{r.id}</td>
-                    <td style={{ padding: "8px 12px" }}>
-                      <span style={{ background: "#0f0a2e", color: "#7c6bc4", borderRadius: 5, padding: "2px 8px", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>{r.symbol}</span>
-                    </td>
-                    <td style={{ padding: "8px 12px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, color: "#818cf8", fontVariantNumeric: "tabular-nums" }}>${fmt2(r.price)}</td>
-                    <td style={{ padding: "8px 12px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{r.timestamp.replace("T"," ").slice(0,19)} UTC</td>
-                  </tr>
-                ))}
+                {priceLog.map((r, i) => {
+                  const prev = priceLog[i + 1];
+                  const delta = prev ? r.price - prev.price : null;
+                  const up = delta >= 0;
+                  const ts = new Date(r.timestamp);
+                  return (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #0b1220", background: i === 0 ? "#0f172a44" : "transparent" }}>
+                      <td style={{ padding: "7px 14px", color: "#374151", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{priceLog.length - i}</td>
+                      <td style={{ padding: "7px 14px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, color: "#a5b4fc", fontVariantNumeric: "tabular-nums" }}>${fmt2(r.price)}</td>
+                      <td style={{ padding: "7px 14px", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>
+                        {delta !== null ? (
+                          <span style={{ color: up ? "#34d399" : "#f87171", fontWeight: 600 }}>
+                            {up ? "▲" : "▼"} {up && delta > 0 ? "+" : ""}{fmt2(delta)}
+                          </span>
+                        ) : <span style={{ color: "#374151" }}>—</span>}
+                      </td>
+                      <td style={{ padding: "7px 14px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11, whiteSpace: "nowrap" }}>
+                        {ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </td>
+                      <td style={{ padding: "7px 14px", color: "#6b7280", fontVariantNumeric: "tabular-nums", fontSize: 11, whiteSpace: "nowrap" }}>
+                        {ts.toISOString().slice(11, 19)} UTC
+                      </td>
+                    </tr>
+                  );
+                })}
+                {priceLog.length === 0 && (
+                  <tr><td colSpan={5} style={{ padding: "24px 14px", color: "#374151", fontSize: 13 }}>No price records yet — waiting for first poll…</td></tr>
+                )}
               </tbody>
             </table>
-          </div>
-          <div style={{ marginTop: 10, fontSize: 10, color: "#4b5563" }}>
-            {DB.price_history.length} total records · append-only · no overwrites · sourced from Finnhub
           </div>
         </div>
 
