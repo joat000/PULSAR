@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from "recharts";
 import { dbInsertPrice, dbLoadPriceHistory } from "./supabase.js";
+import { searchTz, tzLabel } from "./countryTz.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const FINNHUB_KEY = "d8ongu9r01qn89hse3p0d8ongu9r01qn89hse3pg";
@@ -146,10 +147,7 @@ export default function Pulsar() {
   const [tz, setTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [tzSearch, setTzSearch] = useState("");
   const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
-  const filteredTZ = useMemo(() =>
-    tzSearch.trim() === "" ? ALL_TZ : ALL_TZ.filter(z => z.toLowerCase().includes(tzSearch.toLowerCase())),
-    [ALL_TZ, tzSearch]
-  );
+  const filteredTZ = useMemo(() => searchTz(ALL_TZ, tzSearch), [ALL_TZ, tzSearch]);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -524,7 +522,7 @@ export default function Pulsar() {
                     }}
                   >
                     {filteredTZ.map(z => (
-                      <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
+                      <option key={z} value={z}>{tzLabel(z)}</option>
                     ))}
                     {filteredTZ.length === 0 && <option disabled>No matches</option>}
                   </select>
