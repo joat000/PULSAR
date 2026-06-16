@@ -70,6 +70,7 @@ async function fetchProfile() {
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmt2 = n => n?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—";
+const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtDate = iso => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 
 function xTick(iso, range) {
