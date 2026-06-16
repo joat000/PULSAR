@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from "recharts";
-import { dbInsertPrice, dbInsertPattern, dbLoadPriceHistory, dbLoadPatterns } from "./supabase.js";
+import { dbInsertPrice, dbLoadPriceHistory } from "./supabase.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const FINNHUB_KEY = "d8ongu9r01qn89hse3p0d8ongu9r01qn89hse3pg";
@@ -10,8 +10,7 @@ const POLL_MS = 15000; // 15s refresh (Finnhub free: 60 calls/min)
 // ── In-memory DB ─────────────────────────────────────────────────────────────
 const DB = {
   stocks: [{ id: 1, symbol: SYMBOL, company_name: "SpaceX" }],
-  price_history: [], // { id, stock_id, symbol, price, timestamp }
-  patterns: [],
+  price_history: [],
   nextId: 1,
 };
 
@@ -33,12 +32,6 @@ function insertPrice(price, timestamp) {
   dbInsertPrice(SYMBOL, record.price, ts);
 }
 
-function insertPattern(p) {
-  DB.patterns.unshift({ id: DB.nextId++, stock_id: 1, ...p });
-  if (DB.patterns.length > 30) DB.patterns.pop();
-  // Persist to Supabase (fire-and-forget)
-  dbInsertPattern(p.pattern_name, p.confidence, p.detected_at, p.level ?? null);
-}
 
 function getHistoryForRange(range) {
   const now = Date.now();
@@ -74,50 +67,9 @@ async function fetchProfile() {
   return res.json();
 }
 
-// ── Pattern analyser ──────────────────────────────────────────────────────────
-function analysePatterns(history) {
-  if (history.length < 10) return [];
-  const prices = history.map(h => h.price);
-  const last = prices.slice(-20);
-  const results = [];
-
-  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-  const first10 = avg(last.slice(0, Math.min(10, last.length)));
-  const last10 = avg(last.slice(-Math.min(10, last.length)));
-  const slope = last10 - first10;
-
-  if (slope > 1.5) results.push({ pattern_name: "Uptrend", confidence: Math.min(95, 58 + Math.abs(slope) * 4 | 0), detected_at: new Date().toISOString() });
-  if (slope < -1.5) results.push({ pattern_name: "Downtrend", confidence: Math.min(95, 58 + Math.abs(slope) * 4 | 0), detected_at: new Date().toISOString() });
-
-  const max20 = Math.max(...last);
-  const min20 = Math.min(...last);
-  const currentPrice = last[last.length - 1];
-
-  if ((max20 - min20) > 5 && currentPrice > max20 - 2) {
-    results.push({ pattern_name: "Breakout", confidence: 70, detected_at: new Date().toISOString() });
-  }
-
-  const support = parseFloat((min20 + 0.3).toFixed(2));
-  results.push({ pattern_name: "Support Level", confidence: 63, detected_at: new Date().toISOString(), level: support });
-
-  const resistance = parseFloat((max20 - 0.3).toFixed(2));
-  results.push({ pattern_name: "Resistance Level", confidence: 66, detected_at: new Date().toISOString(), level: resistance });
-
-  if (last.length >= 6) {
-    const mid = Math.floor(last.length / 2);
-    const firstHalf = avg(last.slice(0, mid));
-    const secondHalf = avg(last.slice(mid));
-    if (Math.abs(firstHalf - secondHalf) < 1.5) {
-      results.push({ pattern_name: "Consolidation", confidence: 61, detected_at: new Date().toISOString() });
-    }
-  }
-
-  return results;
-}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmt2 = n => n?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—";
-const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtDate = iso => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 
 function xTick(iso, range) {
@@ -145,17 +97,6 @@ function ChartTooltip({ active, payload, label, range, startPrice }) {
   );
 }
 
-function ConfBar({ value }) {
-  const color = value >= 80 ? "#34d399" : value >= 65 ? "#a78bfa" : "#60a5fa";
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1, height: 3, background: "#111827", borderRadius: 2 }}>
-        <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: 2, transition: "width .8s ease" }} />
-      </div>
-      <span style={{ fontSize: 11, color, minWidth: 32, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}%</span>
-    </div>
-  );
-}
 
 function StatCard({ label, value, sub, accent, flash }) {
   return (
@@ -193,7 +134,6 @@ export default function Pulsar() {
   const [profile, setProfile] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [range, setRange] = useState("1D");
-  const [patterns, setPatterns] = useState([]);
   const [flash, setFlash] = useState(null);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
@@ -222,11 +162,7 @@ export default function Pulsar() {
           price: parseFloat(data.c[i].toFixed(2)),
         }));
         setChartData(points);
-        // Seed DB from candle history (inserts only)
         points.forEach(p => insertPrice(p.price, p.time));
-        const pats = analysePatterns(DB.price_history);
-        pats.forEach(p => insertPattern(p));
-        setPatterns([...DB.patterns.slice(0, 6)]);
       } else {
         // Fall back to DB history
         const hist = getHistoryForRange(r);
@@ -257,15 +193,7 @@ export default function Pulsar() {
       setError(null);
       setLastUpdated(new Date());
 
-      // Insert into DB
       insertPrice(q.c);
-
-      // Update patterns periodically
-      if (DB.price_history.length % 3 === 0) {
-        const pats = analysePatterns(DB.price_history);
-        pats.forEach(p => insertPattern(p));
-        setPatterns([...DB.patterns.slice(0, 6)]);
-      }
 
       // Market status
       const hour = new Date().getUTCHours();
@@ -288,18 +216,10 @@ export default function Pulsar() {
     (async () => {
       setLoading(true);
 
-      // Seed in-memory DB from Supabase persisted history
-      const [rows, savedPatterns] = await Promise.all([
-        dbLoadPriceHistory(SYMBOL, 500),
-        dbLoadPatterns(30),
-      ]);
+      const rows = await dbLoadPriceHistory(SYMBOL, 500);
       rows.forEach(r => {
         DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
       });
-      savedPatterns.forEach(p => {
-        DB.patterns.push({ id: DB.nextId++, stock_id: 1, pattern_name: p.pattern_name, confidence: p.confidence, level: p.level, detected_at: p.detected_at });
-      });
-      if (savedPatterns.length) setPatterns([...DB.patterns.slice(0, 6)]);
 
       try {
         const [, p] = await Promise.all([fetchLive(), fetchProfile()]);
@@ -338,8 +258,6 @@ export default function Pulsar() {
   const maxP = chartData.length ? Math.max(...chartData.map(d => d.price)) : (price ?? 170) + 10;
   const pad  = Math.max((maxP - minP) * 0.1, 2);
 
-  const patternIcon  = n => ({ Uptrend:"↑", Downtrend:"↓", Breakout:"⚡", "Support Level":"▬", "Resistance Level":"▬", Consolidation:"↔" }[n] ?? "◈");
-  const patternColor = n => ({ Uptrend:"#34d399", Downtrend:"#f87171", Breakout:"#fbbf24", "Support Level":"#60a5fa", "Resistance Level":"#a78bfa", Consolidation:"#94a3b8" }[n] ?? "#e2e8f0");
   const RANGES = ["1D","1W","1M","ALL"];
 
   const stars = useMemo(() => Array.from({ length: 90 }, (_, i) => ({
@@ -537,31 +455,7 @@ export default function Pulsar() {
           </div>
         </div>
 
-        {/* ── Patterns ── */}
-        <div className="card" style={{ padding: "22px", marginBottom: 18 }}>
-          <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 18 }}>⬡ Pattern Recognition</div>
-          {patterns.length === 0 ? (
-            <div style={{ color: "#6b7280", fontSize: 13 }}>Accumulating price data for pattern analysis…</div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
-              {patterns.slice(0, 6).map((p, i) => (
-                <div key={i}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14, color: patternColor(p.pattern_name) }}>{patternIcon(p.pattern_name)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#c7d2fe" }}>{p.pattern_name}</span>
-                      {p.level && <span style={{ fontSize: 11, color: "#374151" }}>${fmt2(p.level)}</span>}
-                    </div>
-                    <span style={{ fontSize: 10, color: "#6b7280" }}>{fmtTime(p.detected_at)}</span>
-                  </div>
-                  <ConfBar value={p.confidence} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Price history table ── */}
+{/* ── Price history table ── */}
         <div className="card" style={{ padding: "22px" }}>
           <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>◧ Price Record Log</div>
           <div style={{ overflowX: "auto" }}>
