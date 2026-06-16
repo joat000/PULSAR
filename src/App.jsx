@@ -5,7 +5,9 @@ import { dbInsertPrice, dbLoadPriceHistory } from "./supabase.js";
 // ── Config ──────────────────────────────────────────────────────────────────
 const FINNHUB_KEY = "d8ongu9r01qn89hse3p0d8ongu9r01qn89hse3pg";
 const SYMBOL = "SPCX";
-const POLL_MS = 15000; // 15s refresh (Finnhub free: 60 calls/min)
+const POLL_MS = 15000;
+// SPCX listed June 12 2026 — never request data before this date
+const LISTING_UNIX = Math.floor(new Date("2026-06-12T13:30:00Z").getTime() / 1000); // NYSE open
 
 // ── In-memory DB ─────────────────────────────────────────────────────────────
 const DB = {
@@ -33,11 +35,16 @@ function insertPrice(price, timestamp) {
 }
 
 
+const LISTING_MS = LISTING_UNIX * 1000;
+
 function getHistoryForRange(range) {
   const now = Date.now();
   const cutoffs = { "1D": 864e5, "1W": 6048e5, "1M": 2592e6, ALL: Infinity };
   const ms = cutoffs[range] ?? Infinity;
-  return DB.price_history.filter(r => now - new Date(r.timestamp).getTime() <= ms);
+  return DB.price_history.filter(r => {
+    const t = new Date(r.timestamp).getTime();
+    return t >= LISTING_MS && now - t <= ms;
+  });
 }
 
 // ── Finnhub API ───────────────────────────────────────────────────────────────
@@ -75,8 +82,7 @@ const fmtDate = iso => new Date(iso).toLocaleDateString([], { month: "short", da
 
 function xTick(iso, range) {
   if (range === "1D") return fmtTime(iso);
-  if (range === "ALL") return new Date(iso).toLocaleDateString([], { month: "short", year: "2-digit" });
-  return fmtDate(iso);
+  return fmtDate(iso); // ALL/1W/1M all show "Jun 14" style since stock is days old
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -148,13 +154,30 @@ export default function Pulsar() {
   const loadCandles = useCallback(async (r) => {
     setChartLoading(true);
     const now = Math.floor(Date.now() / 1000);
-    const ranges = {
-      "1D": { from: now - 86400,      resolution: "5"  },
-      "1W": { from: now - 604800,     resolution: "30" },
-      "1M": { from: now - 2592000,    resolution: "D"  },
-      "ALL": { from: now - 31536000,  resolution: "W"  },
-    };
-    const { from, resolution } = ranges[r] || ranges["1D"];
+
+    // SPCX listed June 12 2026 — clamp all from values, use fine resolution
+    // since the stock has only been trading days, not months/years
+    const rawFrom = {
+      "1D": now - 86400,
+      "1W": now - 604800,
+      "1M": LISTING_UNIX,   // less than a month old — show from listing
+      "ALL": LISTING_UNIX,
+    }[r] ?? LISTING_UNIX;
+
+    const from = Math.max(rawFrom, LISTING_UNIX);
+
+    // Resolution: fine grain since we only have days of history
+    const resolution = r === "1D" ? "5" : "15";
+
+    // Prefer our own DB data if we have enough points for this range
+    const dbHist = getHistoryForRange(r);
+    if (dbHist.length >= 10) {
+      setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
+      setChartLoading(false);
+      return;
+    }
+
+    // Fall back to Finnhub candles to seed initial data
     try {
       const data = await fetchCandles(resolution, from, now);
       if (data.s === "ok" && data.t?.length) {
@@ -162,17 +185,16 @@ export default function Pulsar() {
           time: new Date(ts * 1000).toISOString(),
           price: parseFloat(data.c[i].toFixed(2)),
         }));
-        setChartData(points);
-        points.forEach(p => insertPrice(p.price, p.time));
+        // Only keep points on or after listing date
+        const valid = points.filter(p => new Date(p.time).getTime() >= LISTING_MS);
+        setChartData(valid);
+        valid.forEach(p => insertPrice(p.price, p.time));
       } else {
-        // Fall back to DB history
-        const hist = getHistoryForRange(r);
-        setChartData(hist.map(h => ({ time: h.timestamp, price: h.price })));
+        setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
       }
     } catch (e) {
       console.error("Candle fetch failed:", e);
-      const hist = getHistoryForRange(r);
-      setChartData(hist.map(h => ({ time: h.timestamp, price: h.price })));
+      setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
     }
     setChartLoading(false);
   }, []);
@@ -218,9 +240,11 @@ export default function Pulsar() {
       setLoading(true);
 
       const rows = await dbLoadPriceHistory(SYMBOL, 500);
-      rows.forEach(r => {
-        DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
-      });
+      rows
+        .filter(r => new Date(r.timestamp).getTime() >= LISTING_MS)
+        .forEach(r => {
+          DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
+        });
 
       try {
         const [, p] = await Promise.all([fetchLive(), fetchProfile()]);
