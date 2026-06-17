@@ -146,8 +146,19 @@ export default function Pulsar() {
   const [priceLog, setPriceLog] = useState([]);
   const [tz, setTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [tzSearch, setTzSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("2026-06-12");
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
   const filteredTZ = useMemo(() => searchTz(ALL_TZ, tzSearch), [ALL_TZ, tzSearch]);
+
+  const filteredLog = useMemo(() => {
+    const from = dateFrom ? new Date(dateFrom + "T00:00:00Z").getTime() : 0;
+    const to   = dateTo   ? new Date(dateTo   + "T23:59:59Z").getTime() : Infinity;
+    return priceLog.filter(r => {
+      const t = new Date(r.timestamp).getTime();
+      return t >= from && t <= to;
+    });
+  }, [priceLog, dateFrom, dateTo]);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -491,9 +502,33 @@ export default function Pulsar() {
         {/* ── Price history table ── */}
         <div className="card" style={{ padding: "22px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2 }}>◧ Price Record Log</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 10, color: "#4b5563" }}>{priceLog.length} records · {POLL_MS / 1000}s interval</span>
+            <div>
+              <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 4 }}>◧ Price Record Log</div>
+              <div style={{ fontSize: 10, color: "#4b5563" }}>
+                {filteredLog.length === priceLog.length
+                  ? `${priceLog.length} records · ${POLL_MS / 1000}s interval`
+                  : `${filteredLog.length} of ${priceLog.length} records · filtered`}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              {/* Date filter */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 10, color: "#6b7280" }}>From</span>
+                <input type="date" value={dateFrom} min="2026-06-12" max={dateTo || undefined}
+                  onChange={e => setDateFrom(e.target.value)}
+                  style={{ background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 7, padding: "4px 8px", fontSize: 11, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+                <span style={{ fontSize: 10, color: "#6b7280" }}>To</span>
+                <input type="date" value={dateTo} min={dateFrom || "2026-06-12"}
+                  onChange={e => setDateTo(e.target.value)}
+                  style={{ background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 7, padding: "4px 8px", fontSize: 11, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+                {(dateFrom !== "2026-06-12" || dateTo !== new Date().toISOString().slice(0,10)) && (
+                  <button onClick={() => { setDateFrom("2026-06-12"); setDateTo(new Date().toISOString().slice(0,10)); }}
+                    style={{ background: "#1e293b", border: "none", color: "#94a3b8", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ position: "relative" }}>
                   <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, pointerEvents: "none" }}>🔍</span>
@@ -540,14 +575,14 @@ export default function Pulsar() {
                 </tr>
               </thead>
               <tbody>
-                {priceLog.map((r, i) => {
-                  const prev = priceLog[i + 1];
+                {filteredLog.map((r, i) => {
+                  const prev = filteredLog[i + 1];
                   const delta = prev ? r.price - prev.price : null;
                   const up = delta >= 0;
                   const ts = new Date(r.timestamp);
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #0b1220", background: i === 0 ? "#0f172a44" : "transparent" }}>
-                      <td style={{ padding: "7px 14px", color: "#374151", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{priceLog.length - i}</td>
+                      <td style={{ padding: "7px 14px", color: "#374151", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{filteredLog.length - i}</td>
                       <td style={{ padding: "7px 14px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, color: "#a5b4fc", fontVariantNumeric: "tabular-nums" }}>${fmt2(r.price)}</td>
                       <td style={{ padding: "7px 14px", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>
                         {delta !== null ? (
@@ -568,8 +603,8 @@ export default function Pulsar() {
                     </tr>
                   );
                 })}
-                {priceLog.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: "24px 14px", color: "#374151", fontSize: 13 }}>No price records yet — waiting for first poll…</td></tr>
+                {filteredLog.length === 0 && (
+                  <tr><td colSpan={5} style={{ padding: "24px 14px", color: "#374151", fontSize: 13 }}>{priceLog.length === 0 ? "No price records yet — waiting for first poll…" : "No records match the selected date range."}</td></tr>
                 )}
               </tbody>
             </table>
