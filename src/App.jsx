@@ -154,6 +154,14 @@ export default function Pulsar() {
   const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
   const filteredTZ = useMemo(() => searchTz(ALL_TZ, tzSearch), [ALL_TZ, tzSearch]);
 
+  // Auto-apply when search narrows to exactly one timezone
+  useEffect(() => {
+    if (tzSearch.trim() && filteredTZ.length === 1) {
+      setTz(filteredTZ[0].tz);
+      setTzSearch("");
+    }
+  }, [filteredTZ, tzSearch]);
+
   const filteredLog = useMemo(() => {
     const from = dateFrom ? new Date(dateFrom + "T00:00:00Z").getTime() : 0;
     const to   = dateTo   ? new Date(dateTo   + "T23:59:59Z").getTime() : Infinity;
@@ -564,29 +572,41 @@ export default function Pulsar() {
                     <span onClick={() => setTzSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#4b5563", cursor: "pointer" }}>✕</span>
                   )}
                 </div>
-                {/* Filtered dropdown */}
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
-                  <select
-                    value={filteredTZ.find(r => r.tz === tz)?.tz ?? filteredTZ[0]?.tz ?? tz}
-                    onChange={e => { setTz(e.target.value); setTzSearch(""); }}
-                    style={{
-                      background: "#080d18", border: "1px solid #1e293b", color: "#a5b4fc",
-                      borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
-                      fontFamily: "inherit", cursor: "pointer", outline: "none",
-                      maxWidth: 220, appearance: "none", WebkitAppearance: "none",
-                    }}
-                  >
-                    {filteredTZ.map(({ tz: z, label }) => (
-                      <option key={z} value={z}>{label}</option>
-                    ))}
-                    {filteredTZ.length === 0 && <option disabled>No matches — try a country name</option>}
-                  </select>
+                {/* Dropdown — only shown when multiple options available */}
+                {filteredTZ.length > 1 && (
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
+                    <select
+                      value={filteredTZ.find(r => r.tz === tz)?.tz ?? filteredTZ[0]?.tz ?? tz}
+                      onChange={e => { setTz(e.target.value); setTzSearch(""); }}
+                      style={{
+                        background: "#080d18", border: "1px solid #5b21b6", color: "#a5b4fc",
+                        borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
+                        fontFamily: "inherit", cursor: "pointer", outline: "none",
+                        maxWidth: 230, appearance: "none", WebkitAppearance: "none",
+                        boxShadow: "0 0 10px #7c3aed33",
+                      }}
+                    >
+                      {filteredTZ.map(({ tz: z, label }) => (
+                        <option key={z} value={z}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {filteredTZ.length === 0 && tzSearch && (
+                  <span style={{ fontSize: 11, color: "#f87171" }}>No matches</span>
+                )}
+                {/* Active timezone badge — always visible */}
+                <div style={{ display: "flex", alignItems: "center", gap: 5, background: "#080d18", border: "1px solid #1e293b", borderRadius: 7, padding: "4px 10px", fontSize: 11 }}>
+                  <span style={{ fontSize: 10 }}>🌐</span>
+                  <span style={{ color: "#a5b4fc", fontWeight: 600 }}>
+                    {new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: tz }).formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value}
+                  </span>
+                  <span style={{ color: "#374151", fontSize: 10 }}>·</span>
+                  <span style={{ color: "#6b7280", fontSize: 10 }}>
+                    {tz.split("/").pop().replace(/_/g, " ")}
+                  </span>
                 </div>
-                {/* Active timezone badge */}
-                <span style={{ fontSize: 10, color: "#6b7280", whiteSpace: "nowrap" }}>
-                  {new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: tz }).formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value}
-                </span>
               </div>
             </div>
           </div>
