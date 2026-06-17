@@ -303,9 +303,13 @@ export default function Pulsar() {
   const prevClose = quote?.pc ?? null;
   const isUp      = (change ?? 0) >= 0;
 
-  const mktCap = profile?.marketCapitalization
-    ? `$${(profile.marketCapitalization / 1000).toFixed(1)}T`
-    : "—";
+  const mktCap = (() => {
+    const m = profile?.marketCapitalization; // Finnhub: millions USD
+    if (!m) return "—";
+    if (m >= 1_000_000) return `$${(m / 1_000_000).toFixed(2)}T`;
+    if (m >= 1_000)     return `$${(m / 1_000).toFixed(2)}B`;
+    return `$${m.toFixed(0)}M`;
+  })();
 
   const minP = chartData.length ? Math.min(...chartData.map(d => d.price)) : (price ?? 170) - 10;
   const maxP = chartData.length ? Math.max(...chartData.map(d => d.price)) : (price ?? 170) + 10;
