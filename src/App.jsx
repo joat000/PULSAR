@@ -172,45 +172,54 @@ export default function Pulsar() {
     setChartLoading(true);
     const now = Math.floor(Date.now() / 1000);
 
-    // SPCX listed June 12 2026 — clamp all from values, use fine resolution
-    // since the stock has only been trading days, not months/years
     const rawFrom = {
       "1D": now - 86400,
       "1W": now - 604800,
-      "1M": LISTING_UNIX,   // less than a month old — show from listing
+      "1M": LISTING_UNIX,
       "ALL": LISTING_UNIX,
     }[r] ?? LISTING_UNIX;
 
     const from = Math.max(rawFrom, LISTING_UNIX);
-
-    // Resolution: fine grain since we only have days of history
     const resolution = r === "1D" ? "5" : "15";
 
-    // Prefer our own DB data if we have enough points for this range
-    const dbHist = getHistoryForRange(r);
-    if (dbHist.length >= 10) {
-      setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
-      setChartLoading(false);
-      return;
-    }
-
-    // Fall back to Finnhub candles to seed initial data
+    // Always fetch Finnhub candles — they hold data from days the app wasn't running
+    // (e.g. Jun 12 IPO day, Jun 15). Merge with DB and backfill any gaps.
     try {
       const data = await fetchCandles(resolution, from, now);
       if (data.s === "ok" && data.t?.length) {
-        const points = data.t.map((ts, i) => ({
-          time: new Date(ts * 1000).toISOString(),
-          price: parseFloat(data.c[i].toFixed(2)),
-        }));
-        // Only keep points on or after listing date
-        const valid = points.filter(p => new Date(p.time).getTime() >= LISTING_MS);
-        setChartData(valid);
-        valid.forEach(p => insertPrice(p.price, p.time));
+        const finnhubPoints = data.t
+          .map((ts, i) => ({
+            time: new Date(ts * 1000).toISOString(),
+            price: parseFloat(data.c[i].toFixed(2)),
+          }))
+          .filter(p => new Date(p.time).getTime() >= LISTING_MS);
+
+        // Build a set of already-known minute-level timestamps from DB
+        const dbHist = getHistoryForRange(r);
+        const knownMinutes = new Set(dbHist.map(h => h.timestamp.slice(0, 16)));
+
+        // Insert any Finnhub points not already in DB (backfills missing days)
+        finnhubPoints.forEach(p => {
+          if (!knownMinutes.has(p.time.slice(0, 16))) {
+            insertPrice(p.price, p.time);
+          }
+        });
+
+        // Merge and sort by time for the chart
+        const allPoints = getHistoryForRange(r)
+          .map(h => ({ time: h.timestamp, price: h.price }))
+          .sort((a, b) => new Date(a.time) - new Date(b.time));
+
+        setChartData(allPoints);
+        setPriceLog([...DB.price_history].reverse());
       } else {
+        // Finnhub returned no data — use DB only
+        const dbHist = getHistoryForRange(r);
         setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
       }
     } catch (e) {
       console.error("Candle fetch failed:", e);
+      const dbHist = getHistoryForRange(r);
       setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
     }
     setChartLoading(false);
