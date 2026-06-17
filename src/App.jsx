@@ -546,38 +546,47 @@ export default function Pulsar() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {/* Search input */}
                 <div style={{ position: "relative" }}>
                   <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, pointerEvents: "none" }}>🔍</span>
                   <input
                     type="text"
-                    placeholder="Search timezone…"
+                    placeholder="Country or timezone…"
                     value={tzSearch}
                     onChange={e => setTzSearch(e.target.value)}
                     style={{
                       background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0",
                       borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
-                      fontFamily: "inherit", outline: "none", width: 160,
+                      fontFamily: "inherit", outline: "none", width: 180,
                     }}
                   />
+                  {tzSearch && (
+                    <span onClick={() => setTzSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#4b5563", cursor: "pointer" }}>✕</span>
+                  )}
                 </div>
+                {/* Filtered dropdown */}
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                   <span style={{ position: "absolute", left: 9, fontSize: 11, pointerEvents: "none" }}>🌐</span>
                   <select
-                    value={filteredTZ.includes(tz) ? tz : filteredTZ[0] ?? tz}
+                    value={filteredTZ.find(r => r.tz === tz)?.tz ?? filteredTZ[0]?.tz ?? tz}
                     onChange={e => { setTz(e.target.value); setTzSearch(""); }}
                     style={{
                       background: "#080d18", border: "1px solid #1e293b", color: "#a5b4fc",
                       borderRadius: 7, padding: "4px 10px 4px 26px", fontSize: 11,
                       fontFamily: "inherit", cursor: "pointer", outline: "none",
-                      maxWidth: 200, appearance: "none", WebkitAppearance: "none",
+                      maxWidth: 220, appearance: "none", WebkitAppearance: "none",
                     }}
                   >
-                    {filteredTZ.map(z => (
-                      <option key={z} value={z}>{tzLabel(z)}</option>
+                    {filteredTZ.map(({ tz: z, label }) => (
+                      <option key={z} value={z}>{label}</option>
                     ))}
-                    {filteredTZ.length === 0 && <option disabled>No matches</option>}
+                    {filteredTZ.length === 0 && <option disabled>No matches — try a country name</option>}
                   </select>
                 </div>
+                {/* Active timezone badge */}
+                <span style={{ fontSize: 10, color: "#6b7280", whiteSpace: "nowrap" }}>
+                  {new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: tz }).formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value}
+                </span>
               </div>
             </div>
           </div>

@@ -242,22 +242,51 @@ for (const [country, zones] of Object.entries(COUNTRY_TZ)) {
   }
 }
 
-// Search timezones by both tz name and country name
+const cap = s => s.replace(/\b\w/g, c => c.toUpperCase());
+
+// Search timezones by country name first, falling back to tz name.
+// Returns array of { tz, label, country } objects.
 export function searchTz(allTz, query) {
   const q = query.trim().toLowerCase();
-  if (!q) return allTz;
-
-  // Collect zones that match country name
-  const byCountry = new Set();
-  for (const [country, zones] of Object.entries(COUNTRY_TZ)) {
-    if (country.includes(q)) zones.forEach(z => byCountry.add(z));
+  if (!q) {
+    return allTz.map(z => ({ tz: z, label: tzLabel(z), country: null }));
   }
 
-  // Filter: country match first, then tz name match
-  const tzMatch = allTz.filter(z => z.toLowerCase().includes(q));
-  const countryFirst = allTz.filter(z => byCountry.has(z) && !tzMatch.includes(z));
+  // 1. Exact country prefix matches (e.g. "ind" matches "india")
+  const exactMatches = [];
+  const partialMatches = [];
 
-  return [...tzMatch, ...countryFirst];
+  for (const [country, zones] of Object.entries(COUNTRY_TZ)) {
+    if (country === q || country.startsWith(q)) {
+      zones.forEach(z => exactMatches.push({ tz: z, label: tzLabelForCountry(z, country), country }));
+    } else if (country.includes(q)) {
+      zones.forEach(z => partialMatches.push({ tz: z, label: tzLabelForCountry(z, country), country }));
+    }
+  }
+
+  // Deduplicate by tz (a zone may appear under multiple country aliases)
+  const seen = new Set();
+  const countryResults = [];
+  for (const item of [...exactMatches, ...partialMatches]) {
+    if (!seen.has(item.tz)) { seen.add(item.tz); countryResults.push(item); }
+  }
+
+  // If we found country matches, return only those
+  if (countryResults.length > 0) return countryResults;
+
+  // 2. Fall back to raw tz name substring match
+  return allTz
+    .filter(z => z.toLowerCase().includes(q))
+    .map(z => ({ tz: z, label: tzLabel(z), country: null }));
+}
+
+function tzLabelForCountry(z, country) {
+  const city = z.split("/").pop().replace(/_/g, " ");
+  const countryName = cap(country);
+  // For countries with one zone just show the country name
+  const zones = COUNTRY_TZ[country] ?? [];
+  if (zones.length === 1) return countryName;
+  return `${city} — ${countryName}`;
 }
 
 // Get a display label for a timezone showing the country if known
@@ -265,7 +294,9 @@ export function tzLabel(z) {
   const countries = TZ_TO_COUNTRIES[z];
   const city = z.split("/").pop().replace(/_/g, " ");
   if (countries?.length) {
-    const name = countries[0].replace(/\b\w/g, c => c.toUpperCase());
+    const name = cap(countries[0]);
+    const zones = COUNTRY_TZ[countries[0]] ?? [];
+    if (zones.length === 1) return name;
     return `${city} — ${name}`;
   }
   return z.replace(/_/g, " ");
