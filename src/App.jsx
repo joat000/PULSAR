@@ -148,6 +148,9 @@ export default function Pulsar() {
   const [tzSearch, setTzSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("2026-06-12");
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [calcDate, setCalcDate] = useState("2026-06-12");
+  const [calcTime, setCalcTime] = useState("14:00");
+  const [calcAmount, setCalcAmount] = useState("");
   const ALL_TZ = useMemo(() => Intl.supportedValuesOf("timeZone"), []);
   const filteredTZ = useMemo(() => searchTz(ALL_TZ, tzSearch), [ALL_TZ, tzSearch]);
 
@@ -623,6 +626,103 @@ export default function Pulsar() {
             </table>
           </div>
         </div>
+
+        {/* ── Profit Calculator ── */}
+        {(() => {
+          // Find closest price in DB to the selected date+time
+          const target = new Date(`${calcDate}T${calcTime}:00Z`).getTime();
+          const sorted = [...DB.price_history].sort((a, b) =>
+            Math.abs(new Date(a.timestamp) - target) - Math.abs(new Date(b.timestamp) - target)
+          );
+          const nearest = sorted[0] ?? null;
+          const buyPrice = nearest?.price ?? null;
+          const invested = parseFloat(calcAmount);
+          const hasResult = buyPrice && invested > 0 && price;
+          const shares     = hasResult ? invested / buyPrice : null;
+          const nowValue   = hasResult ? shares * price : null;
+          const profit     = hasResult ? nowValue - invested : null;
+          const pct        = hasResult ? (profit / invested) * 100 : null;
+          const isGain     = profit >= 0;
+
+          return (
+            <div className="card" style={{ padding: "28px", marginTop: 18 }}>
+              {/* Header */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 4 }}>◎ Profit Calculator</div>
+                <div style={{ fontSize: 13, color: "#4b5563" }}>What if you invested in SPCX on a specific date?</div>
+              </div>
+
+              {/* Inputs row */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 24 }}>
+                <div style={{ flex: "1 1 140px" }}>
+                  <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>Investment Date</div>
+                  <input type="date" value={calcDate} min="2026-06-12" max={new Date().toISOString().slice(0,10)}
+                    onChange={e => setCalcDate(e.target.value)}
+                    style={{ width: "100%", background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+                </div>
+                <div style={{ flex: "1 1 120px" }}>
+                  <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>Time (UTC)</div>
+                  <input type="time" value={calcTime} onChange={e => setCalcTime(e.target.value)}
+                    style={{ width: "100%", background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+                </div>
+                <div style={{ flex: "1 1 160px" }}>
+                  <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>Amount Invested (USD)</div>
+                  <div style={{ position: "relative" }}>
+                    <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#4b5563", fontSize: 13 }}>$</span>
+                    <input type="number" min="1" placeholder="e.g. 1000"
+                      value={calcAmount} onChange={e => setCalcAmount(e.target.value)}
+                      style={{ width: "100%", background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 8, padding: "8px 12px 8px 24px", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Buy price reference */}
+              {nearest && (
+                <div style={{ fontSize: 11, color: "#4b5563", marginBottom: 20 }}>
+                  Nearest recorded price:{" "}
+                  <span style={{ color: "#a5b4fc", fontWeight: 700 }}>${fmt2(buyPrice)}</span>
+                  {" "}at{" "}
+                  <span style={{ color: "#6b7280" }}>{new Date(nearest.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC</span>
+                </div>
+              )}
+
+              {/* Result */}
+              {hasResult ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+                  {[
+                    { label: "Shares Bought",   value: shares.toFixed(4),        color: "#c7d2fe", prefix: "" },
+                    { label: "Buy Price",        value: fmt2(buyPrice),           color: "#c7d2fe", prefix: "$" },
+                    { label: "Current Price",    value: fmt2(price),              color: "#c7d2fe", prefix: "$" },
+                    { label: "Current Value",    value: fmt2(nowValue),           color: "#f1f5f9", prefix: "$" },
+                    { label: "Profit / Loss",    value: (isGain ? "+" : "") + fmt2(profit), color: isGain ? "#34d399" : "#f87171", prefix: "$" },
+                    { label: "Return",           value: (isGain ? "+" : "") + pct.toFixed(2) + "%", color: isGain ? "#34d399" : "#f87171", prefix: "" },
+                  ].map(({ label, value, color, prefix }) => (
+                    <div key={label} className="card" style={{ padding: "14px 18px", background: "#060a12" }}>
+                      <div style={{ fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>{label}</div>
+                      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700, color, letterSpacing: "-0.5px" }}>{prefix}{value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", padding: "28px 0", color: "#374151", fontSize: 13 }}>
+                  {!calcAmount ? "Enter an investment amount to see your result." : !buyPrice ? "No price data found for that date — try a different date or time." : "Enter a valid amount greater than $0."}
+                </div>
+              )}
+
+              {/* Big banner when result exists */}
+              {hasResult && (
+                <div style={{ marginTop: 20, borderRadius: 12, padding: "18px 24px", background: isGain ? "#052e1688" : "#2d0a0a88", border: `1px solid ${isGain ? "#065f4666" : "#7f1d1d66"}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ fontSize: 13, color: isGain ? "#6ee7b7" : "#fca5a5" }}>
+                    {isGain ? "🚀" : "📉"} A <span style={{ fontWeight: 700 }}>${fmt2(invested)}</span> investment on {new Date(`${calcDate}T${calcTime}:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} would be worth
+                  </div>
+                  <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 26, fontWeight: 700, color: isGain ? "#34d399" : "#f87171", letterSpacing: "-1px" }}>
+                    ${fmt2(nowValue)} <span style={{ fontSize: 14, opacity: 0.7 }}>({isGain ? "+" : ""}{pct.toFixed(2)}%)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div style={{ marginTop: 20, textAlign: "center", fontSize: 10, color: "#4b5563", letterSpacing: 1.5 }}>
           PULSAR · SPCX · DATA BY FINNHUB · {new Date().getFullYear()}
