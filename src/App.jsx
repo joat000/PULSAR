@@ -279,7 +279,7 @@ export default function Pulsar() {
 
       // Load ALL data from listing date to now — no cap on records
       const listingIso = new Date(LISTING_MS).toISOString();
-      const rows = await dbLoadPriceHistory(SYMBOL, listingIso, null, 20000);
+      const rows = await dbLoadPriceHistory(SYMBOL, listingIso, null);
       rows.forEach(r => {
         DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
       });
