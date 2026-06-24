@@ -10,21 +10,34 @@ export async function dbInsertPrice(symbol, price, timestamp) {
   await supabase.from("price_history").insert({ symbol, price, timestamp });
 }
 
-// Load price history for a specific time range from Supabase.
-// Returns rows sorted ascending (oldest first) so they can be appended to DB.
-export async function dbLoadPriceHistory(symbol, fromIso, toIso, limit = 5000) {
+// Paginated loader — fetches ALL rows in chunks of 1000
+// (Supabase PostgREST silently caps at 1000 per request)
+export async function dbLoadPriceHistory(symbol, fromIso, toIso) {
   if (!supabase) return [];
-  let q = supabase
-    .from("price_history")
-    .select("id, symbol, price, timestamp")
-    .eq("symbol", symbol)
-    .order("timestamp", { ascending: true })
-    .limit(limit);
 
-  if (fromIso) q = q.gte("timestamp", fromIso);
-  if (toIso)   q = q.lte("timestamp", toIso);
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
 
-  const { data, error } = await q;
-  if (error) { console.error("supabase price_history:", error.message); return []; }
-  return data ?? [];
+  while (true) {
+    let q = supabase
+      .from("price_history")
+      .select("id, symbol, price, timestamp")
+      .eq("symbol", symbol)
+      .order("timestamp", { ascending: true })
+      .range(from, from + PAGE - 1);
+
+    if (fromIso) q = q.gte("timestamp", fromIso);
+    if (toIso)   q = q.lte("timestamp", toIso);
+
+    const { data, error } = await q;
+    if (error) { console.error("supabase price_history:", error.message); break; }
+    if (!data?.length) break;
+
+    all = all.concat(data);
+    if (data.length < PAGE) break; // last page
+    from += PAGE;
+  }
+
+  return all;
 }
