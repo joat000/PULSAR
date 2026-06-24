@@ -224,13 +224,13 @@ export default function Pulsar() {
         setChartData(allPoints);
         setPriceLog([...DB.price_history].reverse());
       } else {
-        // Finnhub returned no data — use DB only
-        const dbHist = getHistoryForRange(r);
+        // Finnhub returned no data or access error — use DB only
+        const dbHist = getHistoryForRange(r).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
       }
     } catch (e) {
       console.error("Candle fetch failed:", e);
-      const dbHist = getHistoryForRange(r);
+      const dbHist = getHistoryForRange(r).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       setChartData(dbHist.map(h => ({ time: h.timestamp, price: h.price })));
     }
     setChartLoading(false);
@@ -277,12 +277,12 @@ export default function Pulsar() {
     (async () => {
       setLoading(true);
 
-      const rows = await dbLoadPriceHistory(SYMBOL, 500);
-      rows
-        .filter(r => new Date(r.timestamp).getTime() >= LISTING_MS)
-        .forEach(r => {
-          DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
-        });
+      // Load ALL data from listing date to now — no cap on records
+      const listingIso = new Date(LISTING_MS).toISOString();
+      const rows = await dbLoadPriceHistory(SYMBOL, listingIso, null, 20000);
+      rows.forEach(r => {
+        DB.price_history.push({ id: DB.nextId++, stock_id: 1, symbol: r.symbol, price: parseFloat(r.price), timestamp: r.timestamp });
+      });
       setPriceLog([...DB.price_history].reverse());
 
       try {
