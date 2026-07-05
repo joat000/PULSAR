@@ -394,10 +394,10 @@ export default function Pulsar() {
           {/* OHLC grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 32px", textAlign: "right" }}>
             {[
-              ["Open",       `$${fmt2(quote?.o)}`],
-              ["Prev Close", `$${fmt2(quote?.pc)}`],
-              ["Day High",   `$${fmt2(quote?.h)}`],
-              ["Day Low",    `$${fmt2(quote?.l)}`],
+              ["Opened At",       `$${fmt2(quote?.o)}`],
+              ["Yesterday Close", `$${fmt2(quote?.pc)}`],
+              ["Today's High",    `$${fmt2(quote?.h)}`],
+              ["Today's Low",     `$${fmt2(quote?.l)}`],
             ].map(([l, v]) => (
               <div key={l}>
                 <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.2 }}>{l}</div>
@@ -409,14 +409,14 @@ export default function Pulsar() {
 
         {/* ── Key Metrics ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
-          <StatCard label="Market Cap"     value={fmtMktCap(metrics?.marketCapitalization ?? profile?.marketCapitalization)} sub="USD" accent="radial-gradient(circle,#4c1d9522,transparent)" />
-          <StatCard label="52W High"       value={metrics?.["52WeekHigh"] ? `$${fmt2(metrics["52WeekHigh"])}` : "—"} sub={metrics?.["52WeekHighDate"] ?? ""} accent="radial-gradient(circle,#14532d22,transparent)" />
-          <StatCard label="52W Low"        value={metrics?.["52WeekLow"]  ? `$${fmt2(metrics["52WeekLow"])}` : "—"}  sub={metrics?.["52WeekLowDate"]  ?? ""} accent="radial-gradient(circle,#7f1d1d22,transparent)" />
-          <StatCard label="Avg Volume 10D" value={metrics?.["10DayAverageTradingVolume"] ? `${metrics["10DayAverageTradingVolume"].toFixed(1)}M` : "—"} sub="shares/day" accent="radial-gradient(circle,#1e3a5f22,transparent)" />
-          <StatCard label="Revenue Growth" value={metrics?.revenueGrowthQuarterlyYoy != null ? fmtPct(metrics.revenueGrowthQuarterlyYoy) : "—"} sub="YoY quarterly" accent="radial-gradient(circle,#064e3b22,transparent)" />
-          <StatCard label="Gross Margin"   value={metrics?.grossMarginAnnual != null ? `${metrics.grossMarginAnnual.toFixed(1)}%` : "—"} sub="annual" accent="radial-gradient(circle,#1e1a4f22,transparent)" />
-          <StatCard label="P/B Ratio"      value={metrics?.pb != null ? metrics.pb.toFixed(1) : "—"} sub="price-to-book" accent="radial-gradient(circle,#2d1b4e22,transparent)" />
-          <StatCard label="5D Return"      value={metrics?.["5DayPriceReturnDaily"] != null ? fmtPct(metrics["5DayPriceReturnDaily"]) : "—"} sub="5-day" accent="radial-gradient(circle,#0c2a4e22,transparent)" />
+          <StatCard label="Company Value"     value={fmtMktCap(metrics?.marketCapitalization ?? profile?.marketCapitalization)} sub="Total worth of all shares" accent="radial-gradient(circle,#4c1d9522,transparent)" />
+          <StatCard label="Highest Price"     value={metrics?.["52WeekHigh"] ? `$${fmt2(metrics["52WeekHigh"])}` : "—"} sub={`Best price — ${metrics?.["52WeekHighDate"] ?? "last 52 weeks"}`} accent="radial-gradient(circle,#14532d22,transparent)" />
+          <StatCard label="Lowest Price"      value={metrics?.["52WeekLow"]  ? `$${fmt2(metrics["52WeekLow"])}` : "—"}  sub={`Cheapest point — ${metrics?.["52WeekLowDate"] ?? "last 52 weeks"}`} accent="radial-gradient(circle,#7f1d1d22,transparent)" />
+          <StatCard label="Daily Trades"      value={metrics?.["10DayAverageTradingVolume"] ? `${metrics["10DayAverageTradingVolume"].toFixed(1)}M` : "—"} sub="Avg shares bought & sold per day" accent="radial-gradient(circle,#1e3a5f22,transparent)" />
+          <StatCard label="Sales Growth"      value={metrics?.revenueGrowthQuarterlyYoy != null ? fmtPct(metrics.revenueGrowthQuarterlyYoy) : "—"} sub="How fast revenue is growing vs last year" accent="radial-gradient(circle,#064e3b22,transparent)" />
+          <StatCard label="Profit on Each $"  value={metrics?.grossMarginAnnual != null ? `${metrics.grossMarginAnnual.toFixed(1)}%` : "—"} sub="Kept after direct costs (higher = better)" accent="radial-gradient(circle,#1e1a4f22,transparent)" />
+          <StatCard label="Value vs Assets"   value={metrics?.pb != null ? `${metrics.pb.toFixed(1)}×` : "—"} sub="How much you pay per $1 of real assets" accent="radial-gradient(circle,#2d1b4e22,transparent)" />
+          <StatCard label="5-Day Gain/Loss"   value={metrics?.["5DayPriceReturnDaily"] != null ? fmtPct(metrics["5DayPriceReturnDaily"]) : "—"} sub="Price change over the last 5 trading days" accent="radial-gradient(circle,#0c2a4e22,transparent)" />
         </div>
 
         {/* ── Tab navigation ── */}
@@ -489,19 +489,19 @@ export default function Pulsar() {
 
               {/* Fundamentals */}
               <div className="card" style={{ padding: "22px" }}>
-                <SectionTitle icon="◎" title="Fundamentals" sub="Annual figures" />
+                <SectionTitle icon="◎" title="Company Health" sub="How SpaceX is actually doing financially" />
                 <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   {[
-                    ["EPS (Annual)",       metrics?.epsAnnual != null ? `$${metrics.epsAnnual.toFixed(4)}` : "—"],
-                    ["Net Profit Margin",  metrics?.netProfitMarginAnnual != null ? `${metrics.netProfitMarginAnnual.toFixed(2)}%` : "—"],
-                    ["Operating Margin",   metrics?.operatingMarginAnnual != null ? `${metrics.operatingMarginAnnual.toFixed(2)}%` : "—"],
-                    ["ROA",                metrics?.roaRfy != null ? `${metrics.roaRfy.toFixed(2)}%` : "—"],
-                    ["ROE",                metrics?.roeRfy != null ? `${metrics.roeRfy.toFixed(2)}%` : "—"],
-                    ["Debt / Equity",      metrics?.["totalDebt/totalEquityAnnual"] != null ? metrics["totalDebt/totalEquityAnnual"].toFixed(3) : "—"],
-                    ["Current Ratio",      metrics?.currentRatioAnnual != null ? metrics.currentRatioAnnual.toFixed(2) : "—"],
-                    ["Cash/Share",         metrics?.cashPerSharePerShareAnnual != null ? `$${metrics.cashPerSharePerShareAnnual.toFixed(4)}` : "—"],
-                    ["YTD Return",         metrics?.yearToDatePriceReturnDaily != null ? fmtPct(metrics.yearToDatePriceReturnDaily) : "—"],
-                    ["vs S&P500 YTD",      metrics?.["priceRelativeToS&P500Ytd"] != null ? fmtPct(metrics["priceRelativeToS&P500Ytd"]) : "—"],
+                    ["Earnings Per Share",        metrics?.epsAnnual != null ? `$${metrics.epsAnnual.toFixed(4)}` : "—"],
+                    ["Profit After All Costs",     metrics?.netProfitMarginAnnual != null ? `${metrics.netProfitMarginAnnual.toFixed(2)}%` : "—"],
+                    ["Profit Before Tax & Interest", metrics?.operatingMarginAnnual != null ? `${metrics.operatingMarginAnnual.toFixed(2)}%` : "—"],
+                    ["Return on Assets",           metrics?.roaRfy != null ? `${metrics.roaRfy.toFixed(2)}%` : "—"],
+                    ["Return on Shareholder Money", metrics?.roeRfy != null ? `${metrics.roeRfy.toFixed(2)}%` : "—"],
+                    ["Debt vs Equity",             metrics?.["totalDebt/totalEquityAnnual"] != null ? metrics["totalDebt/totalEquityAnnual"].toFixed(3) : "—"],
+                    ["Can Pay Short-Term Bills",   metrics?.currentRatioAnnual != null ? metrics.currentRatioAnnual.toFixed(2) : "—"],
+                    ["Cash Per Share",             metrics?.cashPerSharePerShareAnnual != null ? `$${metrics.cashPerSharePerShareAnnual.toFixed(4)}` : "—"],
+                    ["Gain Since Jan 1",           metrics?.yearToDatePriceReturnDaily != null ? fmtPct(metrics.yearToDatePriceReturnDaily) : "—"],
+                    ["vs S&P 500 This Year",       metrics?.["priceRelativeToS&P500Ytd"] != null ? fmtPct(metrics["priceRelativeToS&P500Ytd"]) : "—"],
                   ].map(([label, val]) => {
                     const isNeg = typeof val === "string" && val.startsWith("-") && val.includes("%");
                     const isPos = typeof val === "string" && val.startsWith("+");
@@ -517,14 +517,14 @@ export default function Pulsar() {
 
               {/* Peer Comparison */}
               <div className="card" style={{ padding: "22px" }}>
-                <SectionTitle icon="⊞" title="Peer Comparison" sub="Aerospace & satellite peers" />
+                <SectionTitle icon="⊞" title="How SPCX Compares" sub="Other space & aerospace stocks today" />
                 {peers.length === 0 ? <LoadingPulse h={120} label="Loading peers…" /> : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                     {/* SPCX row */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", marginBottom: 4, background: "#0f172a", borderRadius: 8 }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>SPCX</div>
-                        <div style={{ fontSize: 10, color: "#4b5563" }}>SpaceX · You are here</div>
+                        <div style={{ fontSize: 10, color: "#4b5563" }}>SpaceX — the stock you're tracking</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>${fmt2(price)}</div>
@@ -552,7 +552,7 @@ export default function Pulsar() {
                 {/* Peer bar chart */}
                 {peers.length > 0 && price && (
                   <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Today's % Change</div>
+                    <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Who gained & who lost today</div>
                     <ResponsiveContainer width="100%" height={120}>
                       <BarChart data={[{ symbol: "SPCX", pct: changePct ?? 0 }, ...peers.map(p => ({ symbol: p.symbol, pct: p.change ?? 0 }))]} margin={{ top: 0, right: 0, bottom: 0, left: -30 }}>
                         <XAxis dataKey="symbol" tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -573,7 +573,7 @@ export default function Pulsar() {
             {/* Top news preview */}
             <div className="card" style={{ padding: "22px", marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <SectionTitle icon="◉" title="Latest News" sub="SpaceX & SPCX coverage" />
+                <SectionTitle icon="◉" title="Latest News" sub="What's happening with SpaceX right now" />
                 <button onClick={() => setActiveTab("news")} style={{ background: "none", border: "1px solid #1e293b", color: "#6b7280", cursor: "pointer", fontSize: 11, padding: "4px 12px", borderRadius: 6, fontFamily: "inherit" }}>View all →</button>
               </div>
               {news.slice(0, 4).map((item, i) => (
