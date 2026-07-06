@@ -202,7 +202,7 @@ export default function Pulsar() {
   const [simRunning, setSimRunning]   = useState(false);
   const [simIndex, setSimIndex]       = useState(0);
   const [simTicks, setSimTicks]       = useState([]);
-  const [simSpeed, setSimSpeed]       = useState(10);
+  const [simSpeed, setSimSpeed]       = useState(120000); // ms per tick
   const [simPaper, setSimPaper]       = useState({ cash: 10000, shares: 0, avgCost: 0, trades: [] });
   const [simQty, setSimQty]           = useState("1");
   const [simMsg, setSimMsg]           = useState(null);
@@ -242,7 +242,7 @@ export default function Pulsar() {
 
   useEffect(() => {
     if (!simRunning) { clearInterval(simIntervalRef.current); return; }
-    const delay = Math.max(200, 1500 / simSpeed);
+    const delay = simSpeed; // simSpeed is now ms per tick directly
     simIntervalRef.current = setInterval(() => {
       setSimIndex(prev => {
         if (prev >= simTicks.length - 1) {
@@ -1091,7 +1091,7 @@ export default function Pulsar() {
                       <div>
                         <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Playback speed</div>
                         <div style={{ display: "flex", gap: 6 }}>
-                          {[["5×", 5], ["10×", 10], ["30×", 30], ["Max", 100]].map(([label, val]) => (
+                          {[["2 min", 120000], ["30 sec", 30000], ["10 sec", 10000], ["Fast", 2000]].map(([label, val]) => (
                             <button key={val} onClick={() => setSimSpeed(val)} style={{ background: simSpeed === val ? "linear-gradient(135deg,#170d38,#0f1a35)" : "#080d18", border: `1px solid ${simSpeed === val ? "#5b21b6" : "#1e293b"}`, color: simSpeed === val ? "#a78bfa" : "#4b5563", borderRadius: 7, padding: "8px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>
                           ))}
                         </div>
