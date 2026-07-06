@@ -152,6 +152,9 @@ export default function Pulsar() {
   const [dateFrom, setDateFrom] = useState("2026-06-12");
   const [dateTo, setDateTo]     = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Comparison
+  const [cmpDate, setCmpDate] = useState("2026-06-12");
+
   // Calculator
   const [calcDate, setCalcDate]     = useState("2026-06-12");
   const [calcTime, setCalcTime]     = useState("14:00");
@@ -294,6 +297,33 @@ export default function Pulsar() {
     top: `${Math.random() * 100}%`, left: `${Math.random() * 100}%`,
     dur: `${2.5 + Math.random() * 5}s`, delay: `${Math.random() * 5}s`,
   })), []);
+
+  // Comparison — find closest prices for selected date vs today
+  const cmpResult = useMemo(() => {
+    if (!DB.price_history.length) return null;
+
+    // All records on the selected day
+    const dayRecords = DB.price_history.filter(r => r.timestamp.slice(0, 10) === cmpDate);
+
+    // Available days for the dropdown
+    const availableDays = [...new Set(DB.price_history.map(r => r.timestamp.slice(0, 10)))].sort();
+
+    if (!dayRecords.length) return { availableDays, thenPrice: null, thenTime: null };
+
+    // Use the last price of that day (closing price for the day)
+    const sorted = [...dayRecords].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const last = sorted[sorted.length - 1];
+
+    // Today's latest price
+    const today = DB.price_history[DB.price_history.length - 1];
+
+    const thenPrice = parseFloat(last.price);
+    const nowPrice  = price ?? parseFloat(today?.price ?? 0);
+    const delta     = nowPrice - thenPrice;
+    const deltaPct  = (delta / thenPrice) * 100;
+
+    return { availableDays, thenPrice, thenTime: last.timestamp, nowPrice, delta, deltaPct, isUp: delta >= 0 };
+  }, [cmpDate, price]);
 
   // Calculator
   const calcResult = useMemo(() => {
@@ -573,6 +603,92 @@ export default function Pulsar() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Price Comparison */}
+            <div className="card" style={{ padding: "22px", marginBottom: 18 }}>
+              <SectionTitle icon="⇄" title="Price Comparison" sub="Compare today's price against any previous day" />
+
+              {/* Date selector row */}
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
+                <span style={{ fontSize: 12, color: "#6b7280" }}>Compare today vs</span>
+                <select value={cmpDate} onChange={e => setCmpDate(e.target.value)}
+                  style={{ background: "#080d18", border: "1px solid #5b21b6", color: "#a5b4fc", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontFamily: "inherit", cursor: "pointer", outline: "none", appearance: "none" }}>
+                  {(cmpResult?.availableDays ?? []).filter(d => d !== new Date().toISOString().slice(0, 10)).map(d => (
+                    <option key={d} value={d}>{new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</option>
+                  ))}
+                </select>
+              </div>
+
+              {cmpResult?.thenPrice == null ? (
+                <div style={{ textAlign: "center", padding: "20px 0", color: "#374151", fontSize: 13 }}>No price data recorded for that day.</div>
+              ) : (
+                <>
+                  {/* Main comparison display */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, alignItems: "center", marginBottom: 20 }}>
+
+                    {/* THEN */}
+                    <div className="card" style={{ padding: "20px 24px", background: "#060a12", textAlign: "center" }}>
+                      <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>
+                        {new Date(cmpResult.thenTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      </div>
+                      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 32, fontWeight: 700, color: "#94a3b8", letterSpacing: "-1px" }}>
+                        ${fmt2(cmpResult.thenPrice)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 6 }}>
+                        Last recorded price that day
+                      </div>
+                    </div>
+
+                    {/* Arrow + delta */}
+                    <div style={{ textAlign: "center", minWidth: 100 }}>
+                      <div style={{ fontSize: 28, color: cmpResult.isUp ? "#34d399" : "#f87171", lineHeight: 1 }}>
+                        {cmpResult.isUp ? "↑" : "↓"}
+                      </div>
+                      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: cmpResult.isUp ? "#34d399" : "#f87171", marginTop: 4 }}>
+                        {cmpResult.isUp ? "+" : ""}{fmt2(cmpResult.delta)}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: cmpResult.isUp ? "#059669" : "#dc2626", marginTop: 2 }}>
+                        {cmpResult.isUp ? "+" : ""}{cmpResult.deltaPct.toFixed(2)}%
+                      </div>
+                    </div>
+
+                    {/* NOW */}
+                    <div className="card" style={{ padding: "20px 24px", background: "#060a12", textAlign: "center", border: "1px solid #5b21b644" }}>
+                      <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>Today · Live</div>
+                      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 32, fontWeight: 700, color: "#f1f5f9", letterSpacing: "-1px" }}>
+                        ${fmt2(cmpResult.nowPrice)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 6 }}>Current market price</div>
+                    </div>
+                  </div>
+
+                  {/* Summary banner */}
+                  <div style={{ borderRadius: 10, padding: "14px 20px", background: cmpResult.isUp ? "#052e1666" : "#2d0a0a66", border: `1px solid ${cmpResult.isUp ? "#065f4644" : "#7f1d1d44"}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: cmpResult.isUp ? "#6ee7b7" : "#fca5a5" }}>
+                      {cmpResult.isUp ? "📈" : "📉"} Since {new Date(cmpResult.thenTime).toLocaleDateString("en-US", { month: "long", day: "numeric" })}, SPCX has {cmpResult.isUp ? "gained" : "dropped"}
+                    </span>
+                    <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 700, color: cmpResult.isUp ? "#34d399" : "#f87171" }}>
+                      {cmpResult.isUp ? "+" : ""}{fmt2(cmpResult.delta)} ({cmpResult.isUp ? "+" : ""}{cmpResult.deltaPct.toFixed(2)}%)
+                    </span>
+                  </div>
+
+                  {/* Share button */}
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                    <button onClick={() => {
+                      const text = `SPCX was $${fmt2(cmpResult.thenPrice)} on ${new Date(cmpResult.thenTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — it's now $${fmt2(cmpResult.nowPrice)} (${cmpResult.isUp ? "+" : ""}${cmpResult.deltaPct.toFixed(2)}%) 🚀 via PULSAR`;
+                      if (navigator.share) {
+                        navigator.share({ title: "SPCX Price Comparison", text });
+                      } else {
+                        navigator.clipboard.writeText(text);
+                        alert("Copied to clipboard!");
+                      }
+                    }} style={{ background: "linear-gradient(135deg,#4c1d95,#1e3a8a)", border: "none", color: "#c7d2fe", borderRadius: 8, padding: "8px 20px", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", letterSpacing: 0.5 }}>
+                      Share This Comparison
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Top news preview */}
