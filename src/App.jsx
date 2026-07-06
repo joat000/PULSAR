@@ -141,7 +141,7 @@ export default function Pulsar() {
   const [chartLoading, setChartLoading] = useState(false);
   const [lastUpdated, setLastUpdated]   = useState(null);
   const [marketStatus, setMarketStatus] = useState("—");
-  const [activeTab, setActiveTab] = useState("overview"); // overview | news | table | calculator
+  const [activeTab, setActiveTab] = useState("overview"); // overview | news | table | calculator | trade | learn
 
   // Price log
   const [priceLog, setPriceLog] = useState([]);
@@ -154,6 +154,47 @@ export default function Pulsar() {
 
   // Comparison
   const [cmpDate, setCmpDate] = useState("2026-06-12");
+
+  // Paper trading — persisted in localStorage
+  const [paper, setPaper] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pulsar_paper");
+      return saved ? JSON.parse(saved) : { cash: 10000, shares: 0, avgCost: 0, trades: [] };
+    } catch { return { cash: 10000, shares: 0, avgCost: 0, trades: [] }; }
+  });
+  const [tradeQty, setTradeQty] = useState("1");
+  const [tradeMsg, setTradeMsg] = useState(null);
+
+  const savePaper = (next) => {
+    setPaper(next);
+    try { localStorage.setItem("pulsar_paper", JSON.stringify(next)); } catch {}
+  };
+
+  const doPaperBuy = () => {
+    const qty = parseFloat(tradeQty);
+    if (!qty || qty <= 0 || !price) return;
+    const cost = qty * price;
+    if (cost > paper.cash) { setTradeMsg({ type: "err", text: "Not enough virtual cash!" }); return; }
+    const newAvg = paper.shares === 0 ? price : ((paper.avgCost * paper.shares) + (price * qty)) / (paper.shares + qty);
+    const next = { ...paper, cash: paper.cash - cost, shares: paper.shares + qty, avgCost: newAvg,
+      trades: [{ type: "BUY", qty, price, total: cost, time: new Date().toISOString() }, ...paper.trades] };
+    savePaper(next);
+    setTradeMsg({ type: "ok", text: `Bought ${qty} share${qty !== 1 ? "s" : ""} at $${fmt2(price)}` });
+    setTimeout(() => setTradeMsg(null), 3000);
+  };
+
+  const doPaperSell = () => {
+    const qty = parseFloat(tradeQty);
+    if (!qty || qty <= 0 || !price) return;
+    if (qty > paper.shares) { setTradeMsg({ type: "err", text: "You don't own that many shares!" }); return; }
+    const proceeds = qty * price;
+    const next = { ...paper, cash: paper.cash + proceeds, shares: paper.shares - qty,
+      avgCost: paper.shares - qty === 0 ? 0 : paper.avgCost,
+      trades: [{ type: "SELL", qty, price, total: proceeds, time: new Date().toISOString() }, ...paper.trades] };
+    savePaper(next);
+    setTradeMsg({ type: "ok", text: `Sold ${qty} share${qty !== 1 ? "s" : ""} at $${fmt2(price)}` });
+    setTimeout(() => setTradeMsg(null), 3000);
+  };
 
   // Calculator
   const [calcDate, setCalcDate]     = useState("2026-06-12");
@@ -291,6 +332,24 @@ export default function Pulsar() {
   const pad  = Math.max((maxP - minP) * 0.1, 2);
 
   const RANGES = ["1D", "1W", "1M", "ALL"];
+
+  // Moving averages for chart — 7-period and 20-period
+  const chartWithMA = useMemo(() => {
+    return chartData.map((pt, i, arr) => {
+      const slice7  = arr.slice(Math.max(0, i - 6),  i + 1).map(p => p.price);
+      const slice20 = arr.slice(Math.max(0, i - 19), i + 1).map(p => p.price);
+      const ma7  = slice7.length  >= 3  ? slice7.reduce((s, v) => s + v, 0)  / slice7.length  : null;
+      const ma20 = slice20.length >= 10 ? slice20.reduce((s, v) => s + v, 0) / slice20.length : null;
+      return { ...pt, ma7: ma7 ? parseFloat(ma7.toFixed(2)) : null, ma20: ma20 ? parseFloat(ma20.toFixed(2)) : null };
+    });
+  }, [chartData]);
+
+  // Paper trading derived
+  const paperValue  = paper.shares * (price ?? 0);
+  const paperTotal  = paper.cash + paperValue;
+  const paperPnL    = paperTotal - 10000;
+  const paperPnLPct = (paperPnL / 10000) * 100;
+  const unrealizedPnL = paper.shares > 0 && price ? (price - paper.avgCost) * paper.shares : 0;
 
   const stars = useMemo(() => Array.from({ length: 90 }, (_, i) => ({
     key: i, size: Math.random() > 0.88 ? 2 : 1, opacity: 0.08 + Math.random() * 0.45,
@@ -453,7 +512,7 @@ export default function Pulsar() {
 
         {/* ── Tab navigation ── */}
         <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #161f35", marginBottom: 20 }}>
-          {[["overview","Overview"],["news","News Feed"],["table","Price Log"],["calculator","Calculator"]].map(([id, label]) => (
+          {[["overview","Overview"],["trade","Paper Trade"],["learn","Learn Trading"],["news","News Feed"],["table","Price Log"],["calculator","Calculator"]].map(([id, label]) => (
             <button key={id} className={`tab-btn${activeTab === id ? " active" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
           ))}
         </div>
@@ -484,7 +543,7 @@ export default function Pulsar() {
 
               {chartLoading || loading ? <LoadingPulse /> : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+                  <AreaChart data={chartWithMA} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       {(() => {
                         const first = chartData[0]?.price ?? 0, last = chartData[chartData.length - 1]?.price ?? 0, up = last >= first;
@@ -507,12 +566,18 @@ export default function Pulsar() {
                     <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} />} cursor={{ stroke: "#1e2d50", strokeWidth: 1, strokeDasharray: "4 3" }} />
                     {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `$${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
                     <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 5, fill: "#a78bfa", stroke: "#1e1040", strokeWidth: 2 }} />
+                    <Area type="monotone" dataKey="ma7"  stroke="#fbbf24" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="0" connectNulls />
+                    <Area type="monotone" dataKey="ma20" stroke="#818cf8" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="4 3" connectNulls />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
-              <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", fontSize: 10, color: "#374151" }}>
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#374151" }}>
                 <span>{chartData.length} data points</span>
-                <span>Finnhub · live + historical</span>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 2, background: "#fbbf24", borderRadius: 1 }} /> MA7 — 7-period avg</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 2, background: "#818cf8", borderRadius: 1, borderTop: "2px dashed #818cf8" }} /> MA20 — 20-period avg</span>
+                  <span>Finnhub · live</span>
+                </div>
               </div>
             </div>
 
@@ -897,6 +962,204 @@ export default function Pulsar() {
                 {!calcAmount ? "Enter an investment amount to see your result." : !calcResult.buyPrice ? "No price data found for that date — try a different date or time." : "Enter a valid amount greater than $0."}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ══════════════════════ PAPER TRADE TAB ══════════════════════ */}
+        {activeTab === "trade" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Portfolio summary */}
+            <div className="card" style={{ padding: "24px 28px" }}>
+              <SectionTitle icon="◈" title="Your Virtual Portfolio" sub="Start with $10,000 — practice buying & selling SPCX with no real money at risk" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 }}>
+                {[
+                  { label: "Total Portfolio Value", term: "Market Value", val: `$${fmt2(paperTotal)}`, color: paperPnL >= 0 ? "#34d399" : "#f87171" },
+                  { label: "Cash Available",        term: "Buying Power",  val: `$${fmt2(paper.cash)}`,  color: "#94a3b8" },
+                  { label: "Shares Owned",          term: "Position Size", val: paper.shares.toFixed(4), color: "#c7d2fe" },
+                  { label: "Avg Buy Price",         term: "Cost Basis",    val: paper.shares > 0 ? `$${fmt2(paper.avgCost)}` : "—", color: "#94a3b8" },
+                  { label: "Unrealised Gain/Loss",  term: "Open P&L",      val: paper.shares > 0 ? `${unrealizedPnL >= 0 ? "+" : ""}$${fmt2(unrealizedPnL)}` : "—", color: unrealizedPnL >= 0 ? "#34d399" : "#f87171" },
+                  { label: "Overall Return",        term: "Total P&L",     val: `${paperPnL >= 0 ? "+" : ""}$${fmt2(paperPnL)} (${paperPnLPct >= 0 ? "+" : ""}${paperPnLPct.toFixed(2)}%)`, color: paperPnL >= 0 ? "#34d399" : "#f87171" },
+                ].map(({ label, term, val, color }) => (
+                  <div key={label} className="card" style={{ padding: "14px 16px", background: "#060a12" }}>
+                    <div style={{ fontSize: 11, color: "#c7d2fe", fontWeight: 600, marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>{term}</div>
+                    <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 18, fontWeight: 700, color }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Trade panel */}
+              <div className="card" style={{ padding: "20px 24px", background: "#060a12" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
+                  Live price: <span style={{ color: "#f1f5f9", fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif", fontSize: 16 }}>${fmt2(price)}</span>
+                  <span style={{ color: isUp ? "#34d399" : "#f87171", marginLeft: 10, fontSize: 12 }}>{isUp ? "▲" : "▼"} {fmtPct(changePct)} today</span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>Number of Shares</div>
+                    <input type="number" min="0.01" step="0.01" placeholder="e.g. 1" value={tradeQty} onChange={e => setTradeQty(e.target.value)}
+                      style={{ background: "#0b1220", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontFamily: "inherit", outline: "none", width: 130 }} />
+                  </div>
+                  {price && tradeQty && (
+                    <div style={{ fontSize: 12, color: "#4b5563", marginTop: 18 }}>
+                      = <span style={{ color: "#94a3b8", fontWeight: 600 }}>${fmt2(parseFloat(tradeQty) * price)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                    <button onClick={doPaperBuy} style={{ background: "linear-gradient(135deg,#065f46,#064e3b)", border: "1px solid #059669", color: "#34d399", borderRadius: 8, padding: "8px 24px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", letterSpacing: 0.5 }}>
+                      BUY
+                    </button>
+                    <button onClick={doPaperSell} disabled={paper.shares <= 0} style={{ background: paper.shares > 0 ? "linear-gradient(135deg,#7f1d1d,#6b1414)" : "#1a1a2e", border: `1px solid ${paper.shares > 0 ? "#dc2626" : "#374151"}`, color: paper.shares > 0 ? "#f87171" : "#374151", borderRadius: 8, padding: "8px 24px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: paper.shares > 0 ? "pointer" : "not-allowed", letterSpacing: 0.5 }}>
+                      SELL
+                    </button>
+                    <button onClick={() => { if (window.confirm("Reset portfolio to $10,000?")) savePaper({ cash: 10000, shares: 0, avgCost: 0, trades: [] }); }}
+                      style={{ background: "none", border: "1px solid #1e293b", color: "#4b5563", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                {tradeMsg && (
+                  <div style={{ marginTop: 14, padding: "10px 16px", borderRadius: 8, background: tradeMsg.type === "ok" ? "#052e1688" : "#2d0a0a88", border: `1px solid ${tradeMsg.type === "ok" ? "#065f46" : "#7f1d1d"}`, color: tradeMsg.type === "ok" ? "#34d399" : "#f87171", fontSize: 13 }}>
+                    {tradeMsg.type === "ok" ? "✓" : "⚠"} {tradeMsg.text}
+                  </div>
+                )}
+
+                {/* Concept explanation */}
+                <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 8, background: "#0b1220", border: "1px solid #161f35" }}>
+                  <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 4 }}>What just happened?</div>
+                  <div style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.7 }}>
+                    When you press <strong style={{ color: "#34d399" }}>BUY</strong>, you're paying the <strong style={{ color: "#94a3b8" }}>market price</strong> — whatever SPCX is trading at right now. This is called a <strong style={{ color: "#94a3b8" }}>Market Order</strong> — instant, no haggling.{" "}
+                    When you press <strong style={{ color: "#f87171" }}>SELL</strong>, you receive the current price and the money goes back to your cash. The difference between your buy price and sell price is your <strong style={{ color: "#94a3b8" }}>Profit or Loss (P&L)</strong>.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Trade history */}
+            {paper.trades.length > 0 && (
+              <div className="card" style={{ padding: "22px" }}>
+                <SectionTitle icon="◧" title="Trade History" sub="Every simulated trade you've made" />
+                <div style={{ overflowY: "auto", maxHeight: 360 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead style={{ position: "sticky", top: 0, background: "#0b1220" }}>
+                      <tr>{["Action", "Shares", "Price", "Total Value", "Time"].map(h => (
+                        <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "8px 14px", borderBottom: "1px solid #1e293b", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {paper.trades.map((t, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #0b1220" }}>
+                          <td style={{ padding: "8px 14px" }}>
+                            <span style={{ background: t.type === "BUY" ? "#052e16" : "#2d0a0a", color: t.type === "BUY" ? "#34d399" : "#f87171", padding: "2px 10px", borderRadius: 5, fontSize: 11, fontWeight: 700 }}>{t.type}</span>
+                          </td>
+                          <td style={{ padding: "8px 14px", color: "#94a3b8", fontFamily: "'Space Grotesk',sans-serif" }}>{t.qty}</td>
+                          <td style={{ padding: "8px 14px", color: "#a5b4fc", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600 }}>${fmt2(t.price)}</td>
+                          <td style={{ padding: "8px 14px", color: "#6b7280" }}>${fmt2(t.total)}</td>
+                          <td style={{ padding: "8px 14px", color: "#374151", fontSize: 11 }}>{new Date(t.time).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════ LEARN TAB ══════════════════════ */}
+        {activeTab === "learn" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {[
+              {
+                term: "Stock / Share",
+                emoji: "🏢",
+                plain: "What does owning a share actually mean?",
+                body: `When you buy 1 share of SPCX, you own a tiny piece of SpaceX. Right now SpaceX has millions of shares out there. The price of one share is $${fmt2(price)} — that's what the market thinks one tiny piece is worth today. If SpaceX does well, more people want a piece, the price goes up. If it struggles, people sell, price drops.`,
+                live: `SPCX current price: $${fmt2(price)} · Company total value: ${fmtMktCap(metrics?.marketCapitalization)}`,
+              },
+              {
+                term: "Market Cap",
+                emoji: "💰",
+                plain: "How do you measure how big a company is?",
+                body: `Market Cap = Share Price × Total Shares. It's the total cost to buy every single share of SpaceX right now. A $2T market cap means SpaceX is worth roughly 2 trillion dollars in the market's eyes. It has nothing to do with how much cash SpaceX actually has in the bank — it's what people are willing to pay for it.`,
+                live: `SPCX Market Cap: ${fmtMktCap(metrics?.marketCapitalization)} · Price per share: $${fmt2(price)}`,
+              },
+              {
+                term: "Bull & Bear Market",
+                emoji: "🐂🐻",
+                plain: "Why do traders talk about bulls and bears?",
+                body: `A Bull market means prices are going UP — investors are confident, buying more, pushing prices higher. A Bear market means prices are going DOWN — fear spreads, people sell, prices fall. The terms come from how the animals attack: a bull thrusts UP with its horns, a bear swipes DOWN with its paws. Simple as that.`,
+                live: `SPCX is ${(changePct ?? 0) >= 0 ? "up today — short-term bullish signal" : "down today — short-term bearish signal"} (${fmtPct(changePct)} today)`,
+              },
+              {
+                term: "Moving Average (MA)",
+                emoji: "📈",
+                plain: "What's that extra line on the chart?",
+                body: `A Moving Average smooths out price noise. MA7 (yellow line) = average of the last 7 prices. MA20 (purple dashed) = average of the last 20 prices. When the price is ABOVE the MA line, it's trending up — bullish. When price drops BELOW the MA, it may be turning bearish. When the short MA (7) crosses above the long MA (20) — traders call it a "Golden Cross" — a buy signal.`,
+                live: `Check the chart — look where the yellow (MA7) and purple (MA20) lines sit vs the price line`,
+              },
+              {
+                term: "Support & Resistance",
+                emoji: "🧱",
+                plain: "Why does a stock bounce at certain prices?",
+                body: `Support is a price floor — where buyers keep stepping in and stopping the fall. Resistance is a ceiling — where sellers keep appearing and stopping the rise. These aren't magic, they form because lots of people made trades at those levels and remember them. SPCX's 52-week low ($${fmt2(metrics?.["52WeekLow"])}) acts as a strong support level.`,
+                live: `SPCX 52W Low (support): $${fmt2(metrics?.["52WeekLow"])} · 52W High (resistance): $${fmt2(metrics?.["52WeekHigh"])}`,
+              },
+              {
+                term: "Volume",
+                emoji: "📊",
+                plain: "Why does it matter how many shares were traded?",
+                body: `Volume = number of shares bought and sold. High volume on a price move means the move is real — lots of conviction. Low volume on a move means it might reverse quickly — not many people behind it. If SPCX jumps 5% on high volume, that's a strong signal. If it jumps 5% on very low volume, be careful — it might not last.`,
+                live: `SPCX avg daily volume: ${metrics?.["10DayAverageTradingVolume"]?.toFixed(1)}M shares/day`,
+              },
+              {
+                term: "Bid & Ask",
+                emoji: "↕️",
+                plain: "Why is there always a tiny gap between buy and sell price?",
+                body: `The Bid is the highest price a buyer is willing to pay. The Ask is the lowest price a seller is willing to accept. The gap between them is the Spread — it's the market maker's fee for connecting buyer and seller. When you hit BUY, you pay the Ask. When you hit SELL, you get the Bid. For SPCX, this spread is usually just a few cents, but on less popular stocks it can be dollars wide.`,
+                live: `Current SPCX price shown is the mid-point between bid and ask`,
+              },
+              {
+                term: "P&L — Profit & Loss",
+                emoji: "💸",
+                plain: "How do you calculate if you made or lost money?",
+                body: `P&L = (Current Price − Your Buy Price) × Number of Shares. If you bought at $150 and it's now $156, your P&L is +$6 per share. If you own 10 shares, that's +$60 unrealised profit. Unrealised means you haven't sold yet — the profit exists on paper but could disappear if the price drops. Once you sell, it becomes Realised P&L — locked in forever.`,
+                live: `Go to Paper Trade tab, buy some shares, and watch your Open P&L update live`,
+              },
+              {
+                term: "Risk Management",
+                emoji: "🛡️",
+                plain: "The rule every trader lives by",
+                body: `Never risk more than you can afford to lose. Most professional traders risk only 1-2% of their total capital on any single trade. If you have $10,000, risking $100-$200 per trade. A Stop Loss is an automatic sell order that kicks in if the price drops to a certain level — it caps your downside. With SPCX's 52W range of $${fmt2(metrics?.["52WeekLow"])} to $${fmt2(metrics?.["52WeekHigh"])}, the stock can swing significantly.`,
+                live: `SPCX price range this year: $${fmt2(metrics?.["52WeekLow"])} to $${fmt2(metrics?.["52WeekHigh"])} — a ${metrics?.["52WeekHigh"] && metrics?.["52WeekLow"] ? (((metrics["52WeekHigh"] - metrics["52WeekLow"]) / metrics["52WeekLow"]) * 100).toFixed(1) : "—"}% swing`,
+              },
+              {
+                term: "EPS — Earnings Per Share",
+                emoji: "📋",
+                plain: "Is SpaceX actually making money?",
+                body: `EPS = Net Profit ÷ Total Shares. If EPS is positive, the company made money. If negative, it lost money. SpaceX's EPS is currently $${metrics?.epsAnnual?.toFixed(4) ?? "—"} — which means for every share you own, SpaceX's profit/loss per share is that amount. Negative EPS doesn't always mean disaster — growth companies like SpaceX often lose money early while investing heavily in the future.`,
+                live: `SPCX EPS: $${metrics?.epsAnnual?.toFixed(4) ?? "—"} · Net margin: ${metrics?.netProfitMarginAnnual?.toFixed(2) ?? "—"}%`,
+              },
+            ].map(({ term, emoji, plain, body, live }) => (
+              <div key={term} className="card" style={{ padding: "22px 24px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ fontSize: 28, flexShrink: 0, lineHeight: 1 }}>{emoji}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#c7d2fe" }}>{term}</span>
+                      <span style={{ fontSize: 12, color: "#6b7280" }}>{plain}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.8, marginBottom: 12 }}>{body}</div>
+                    <div style={{ background: "#0b1220", border: "1px solid #1e293b", borderRadius: 8, padding: "8px 14px", fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>
+                      Live: <span style={{ color: "#6b7280", fontWeight: 400 }}>{live}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
