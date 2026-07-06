@@ -196,6 +196,91 @@ export default function Pulsar() {
     setTimeout(() => setTradeMsg(null), 3000);
   };
 
+  // Simulator
+  const [simMode, setSimMode]         = useState(false);
+  const [simDay, setSimDay]           = useState("");
+  const [simRunning, setSimRunning]   = useState(false);
+  const [simIndex, setSimIndex]       = useState(0);
+  const [simTicks, setSimTicks]       = useState([]);
+  const [simSpeed, setSimSpeed]       = useState(10);
+  const [simPaper, setSimPaper]       = useState({ cash: 10000, shares: 0, avgCost: 0, trades: [] });
+  const [simQty, setSimQty]           = useState("1");
+  const [simMsg, setSimMsg]           = useState(null);
+  const [simDone, setSimDone]         = useState(false);
+  const simIntervalRef                = useRef(null);
+
+  const simPrice = simTicks[simIndex]?.price ?? null;
+  const simChartData = simTicks.slice(0, simIndex + 1).map(t => ({ time: t.timestamp, price: t.price }));
+
+  const startSim = () => {
+    const ticks = DB.price_history
+      .filter(r => r.timestamp.slice(0, 10) === simDay)
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    if (!ticks.length) { setSimMsg({ type: "err", text: "No data for that day." }); return; }
+    setSimTicks(ticks);
+    setSimIndex(0);
+    setSimPaper({ cash: 10000, shares: 0, avgCost: 0, trades: [] });
+    setSimDone(false);
+    setSimMsg(null);
+    setSimRunning(true);
+  };
+
+  const stopSim = () => {
+    setSimRunning(false);
+    clearInterval(simIntervalRef.current);
+  };
+
+  const resetSim = () => {
+    stopSim();
+    setSimTicks([]);
+    setSimIndex(0);
+    setSimPaper({ cash: 10000, shares: 0, avgCost: 0, trades: [] });
+    setSimDone(false);
+    setSimMsg(null);
+    setSimMode(false);
+  };
+
+  useEffect(() => {
+    if (!simRunning) { clearInterval(simIntervalRef.current); return; }
+    const delay = Math.max(200, 1500 / simSpeed);
+    simIntervalRef.current = setInterval(() => {
+      setSimIndex(prev => {
+        if (prev >= simTicks.length - 1) {
+          clearInterval(simIntervalRef.current);
+          setSimRunning(false);
+          setSimDone(true);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, delay);
+    return () => clearInterval(simIntervalRef.current);
+  }, [simRunning, simSpeed, simTicks.length]);
+
+  const doSimBuy = () => {
+    const qty = parseFloat(simQty);
+    if (!qty || qty <= 0 || !simPrice) return;
+    const cost = qty * simPrice;
+    if (cost > simPaper.cash) { setSimMsg({ type: "err", text: "Not enough cash!" }); return; }
+    const newAvg = simPaper.shares === 0 ? simPrice : ((simPaper.avgCost * simPaper.shares) + (simPrice * qty)) / (simPaper.shares + qty);
+    setSimPaper(p => ({ ...p, cash: p.cash - cost, shares: p.shares + qty, avgCost: newAvg,
+      trades: [{ type: "BUY", qty, price: simPrice, total: cost, time: simTicks[simIndex]?.timestamp }, ...p.trades] }));
+    setSimMsg({ type: "ok", text: `Bought ${qty} share${qty !== 1 ? "s" : ""} at $${fmt2(simPrice)}` });
+    setTimeout(() => setSimMsg(null), 2000);
+  };
+
+  const doSimSell = () => {
+    const qty = parseFloat(simQty);
+    if (!qty || qty <= 0 || !simPrice) return;
+    if (qty > simPaper.shares) { setSimMsg({ type: "err", text: "You don't own that many shares!" }); return; }
+    const proceeds = qty * simPrice;
+    setSimPaper(p => ({ ...p, cash: p.cash + proceeds, shares: p.shares - qty,
+      avgCost: p.shares - qty === 0 ? 0 : p.avgCost,
+      trades: [{ type: "SELL", qty, price: simPrice, total: proceeds, time: simTicks[simIndex]?.timestamp }, ...p.trades] }));
+    setSimMsg({ type: "ok", text: `Sold ${qty} share${qty !== 1 ? "s" : ""} at $${fmt2(simPrice)}` });
+    setTimeout(() => setSimMsg(null), 2000);
+  };
+
   // Calculator
   const [calcDate, setCalcDate]     = useState("2026-06-12");
   const [calcTime, setCalcTime]     = useState("14:00");
@@ -969,6 +1054,228 @@ export default function Pulsar() {
         {activeTab === "trade" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
+            {/* Mode toggle */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { resetSim(); setSimMode(false); }} style={{ flex: 1, padding: "12px", borderRadius: 10, border: `2px solid ${!simMode ? "#7c3aed" : "#161f35"}`, background: !simMode ? "linear-gradient(135deg,#170d38,#0f1a35)" : "#0b1220", color: !simMode ? "#a78bfa" : "#4b5563", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
+                ◈ Live Paper Trade
+                <div style={{ fontSize: 10, fontWeight: 400, marginTop: 3, color: !simMode ? "#6d28d9" : "#374151" }}>Buy & sell at today's live price</div>
+              </button>
+              <button onClick={() => setSimMode(true)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: `2px solid ${simMode ? "#7c3aed" : "#161f35"}`, background: simMode ? "linear-gradient(135deg,#170d38,#0f1a35)" : "#0b1220", color: simMode ? "#a78bfa" : "#4b5563", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
+                ⏵ Time Machine Simulator
+                <div style={{ fontSize: 10, fontWeight: 400, marginTop: 3, color: simMode ? "#6d28d9" : "#374151" }}>Replay a past trading day tick by tick</div>
+              </button>
+            </div>
+
+            {/* ── SIMULATOR MODE ── */}
+            {simMode && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                {/* Setup screen — shown before sim starts */}
+                {!simTicks.length && (
+                  <div className="card" style={{ padding: "28px" }}>
+                    <SectionTitle icon="⏵" title="Time Machine Simulator" sub="Pick a real trading day — watch the actual SPCX price tick through live. Buy & sell as it happens." />
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", marginBottom: 24 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Choose a trading day</div>
+                        <select value={simDay} onChange={e => setSimDay(e.target.value)}
+                          style={{ background: "#080d18", border: "1px solid #5b21b6", color: "#a5b4fc", borderRadius: 8, padding: "10px 18px", fontSize: 13, fontFamily: "inherit", cursor: "pointer", outline: "none", appearance: "none", minWidth: 220 }}>
+                          <option value="">— select a day —</option>
+                          {[...new Set(DB.price_history.map(r => r.timestamp.slice(0, 10)))].sort().map(d => {
+                            const count = DB.price_history.filter(r => r.timestamp.slice(0, 10) === d).length;
+                            return <option key={d} value={d}>{new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric", year: "numeric" })} — {count} price ticks</option>;
+                          })}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Playback speed</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {[["5×", 5], ["10×", 10], ["30×", 30], ["Max", 100]].map(([label, val]) => (
+                            <button key={val} onClick={() => setSimSpeed(val)} style={{ background: simSpeed === val ? "linear-gradient(135deg,#170d38,#0f1a35)" : "#080d18", border: `1px solid ${simSpeed === val ? "#5b21b6" : "#1e293b"}`, color: simSpeed === val ? "#a78bfa" : "#4b5563", borderRadius: 7, padding: "8px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {simDay && (
+                      <div style={{ marginBottom: 20, padding: "14px 18px", background: "#080d18", borderRadius: 10, border: "1px solid #1e293b" }}>
+                        {(() => {
+                          const ticks = DB.price_history.filter(r => r.timestamp.slice(0, 10) === simDay).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                          const open = ticks[0]?.price, close = ticks[ticks.length - 1]?.price;
+                          const hi = Math.max(...ticks.map(t => t.price)), lo = Math.min(...ticks.map(t => t.price));
+                          const pct = open ? ((close - open) / open * 100).toFixed(2) : null;
+                          return (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>Open</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#94a3b8" }}>${fmt2(open)}</div></div>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>Close</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#f1f5f9" }}>${fmt2(close)}</div></div>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>High</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#34d399" }}>${fmt2(hi)}</div></div>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>Low</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#f87171" }}>${fmt2(lo)}</div></div>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>Day Move</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: pct >= 0 ? "#34d399" : "#f87171" }}>{pct >= 0 ? "+" : ""}{pct}%</div></div>
+                              <div><div style={{ fontSize: 10, color: "#4b5563", marginBottom: 3 }}>Price Ticks</div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 16, fontWeight: 700, color: "#a5b4fc" }}>{ticks.length}</div></div>
+                            </div>
+                          );
+                        })()}
+                        <div style={{ fontSize: 11, color: "#374151", marginTop: 12 }}>You won't see the prices in advance. They'll reveal one by one as the simulation plays — just like real trading.</div>
+                      </div>
+                    )}
+
+                    {simMsg && <div style={{ marginBottom: 14, padding: "10px 16px", borderRadius: 8, background: "#2d0a0a88", color: "#f87171", fontSize: 13 }}>⚠ {simMsg.text}</div>}
+
+                    <button onClick={startSim} disabled={!simDay}
+                      style={{ background: simDay ? "linear-gradient(135deg,#4c1d95,#1e3a8a)" : "#1a1a2e", border: "none", color: simDay ? "#c7d2fe" : "#374151", borderRadius: 10, padding: "14px 36px", fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: simDay ? "pointer" : "not-allowed", letterSpacing: 0.5, boxShadow: simDay ? "0 0 24px #7c3aed33" : "none" }}>
+                      ⏵ Start Simulation
+                    </button>
+                  </div>
+                )}
+
+                {/* Active simulation */}
+                {simTicks.length > 0 && (
+                  <>
+                    {/* Live ticker */}
+                    <div className={`card${simPrice && simTicks[simIndex - 1] ? (simPrice >= simTicks[simIndex - 1]?.price ? " flash-up" : " flash-down") : ""}`}
+                      style={{ padding: "22px 28px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 2, marginBottom: 6 }}>
+                          Simulating — {new Date(simDay + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                        </div>
+                        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 48, fontWeight: 700, color: "#f8fafc", letterSpacing: "-2px" }}>
+                          ${fmt2(simPrice)}
+                        </div>
+                        {simIndex > 0 && (() => {
+                          const prev = simTicks[simIndex - 1]?.price;
+                          const d = simPrice - prev, up = d >= 0;
+                          return <div style={{ fontSize: 14, color: up ? "#34d399" : "#f87171", marginTop: 4 }}>{up ? "▲" : "▼"} {up && d > 0 ? "+" : ""}{fmt2(d)} this tick</div>;
+                        })()}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                        <div style={{ fontSize: 11, color: "#4b5563" }}>Tick {simIndex + 1} of {simTicks.length}</div>
+                        <div style={{ width: 160, height: 6, background: "#161f35", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${((simIndex + 1) / simTicks.length) * 100}%`, background: "linear-gradient(90deg,#7c3aed,#2563eb)", borderRadius: 3, transition: "width .3s" }} />
+                        </div>
+                        <div style={{ fontSize: 10, color: "#374151" }}>
+                          {simTicks[simIndex] ? new Date(simTicks[simIndex].timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "UTC" }) + " UTC" : ""}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                          {simRunning
+                            ? <button onClick={stopSim} style={{ background: "#1e293b", border: "1px solid #374151", color: "#fbbf24", borderRadius: 7, padding: "6px 16px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>⏸ Pause</button>
+                            : !simDone && <button onClick={() => setSimRunning(true)} style={{ background: "#052e16", border: "1px solid #059669", color: "#34d399", borderRadius: 7, padding: "6px 16px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>⏵ Resume</button>
+                          }
+                          <button onClick={resetSim} style={{ background: "none", border: "1px solid #1e293b", color: "#4b5563", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>✕ End</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {simDone && (
+                      <div style={{ padding: "16px 22px", borderRadius: 12, background: "#0b1220", border: "1px solid #7c3aed44", textAlign: "center" }}>
+                        <div style={{ fontSize: 14, color: "#a78bfa", fontWeight: 700, marginBottom: 6 }}>Simulation Complete</div>
+                        <div style={{ fontSize: 12, color: "#6b7280" }}>That was the full trading day. See your results below, then try a different day.</div>
+                      </div>
+                    )}
+
+                    {/* Mini chart */}
+                    {simChartData.length > 1 && (
+                      <div className="card" style={{ padding: "18px 18px 10px" }}>
+                        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 10 }}>Price so far</div>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <AreaChart data={simChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                            <defs>
+                              <linearGradient id="simFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="#7c3aed" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="time" tickFormatter={v => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} tick={{ fill: "#374151", fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                            <YAxis domain={["auto", "auto"]} tick={{ fill: "#374151", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(0)}`} width={48} />
+                            <Tooltip formatter={v => [`$${fmt2(v)}`, "Price"]} contentStyle={{ background: "#0b1220", border: "1px solid #1e2d50", borderRadius: 8, fontSize: 11 }} />
+                            <Area type="monotone" dataKey="price" stroke="#7c3aed" strokeWidth={2} fill="url(#simFill)" dot={false} activeDot={{ r: 4, fill: "#a78bfa" }} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    {/* Sim trade panel */}
+                    <div className="card" style={{ padding: "22px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#c7d2fe", fontWeight: 600 }}>Simulation Portfolio</div>
+                          <div style={{ fontSize: 10, color: "#4b5563" }}>Virtual $10,000 — separate from your live paper trade account</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 20 }}>
+                          {[
+                            ["Cash", `$${fmt2(simPaper.cash)}`],
+                            ["Shares", simPaper.shares.toFixed(4)],
+                            ["Avg Cost", simPaper.shares > 0 ? `$${fmt2(simPaper.avgCost)}` : "—"],
+                            ["Open P&L", simPaper.shares > 0 && simPrice ? `${((simPrice - simPaper.avgCost) * simPaper.shares) >= 0 ? "+" : ""}$${fmt2((simPrice - simPaper.avgCost) * simPaper.shares)}` : "—"],
+                          ].map(([l, v]) => (
+                            <div key={l} style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1 }}>{l}</div>
+                              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 14, fontWeight: 700, color: l === "Open P&L" ? (v.startsWith("+") ? "#34d399" : "#f87171") : "#94a3b8" }}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>Shares</div>
+                          <input type="number" min="0.01" step="0.01" value={simQty} onChange={e => setSimQty(e.target.value)}
+                            style={{ background: "#080d18", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 8, padding: "8px 14px", fontSize: 14, fontFamily: "inherit", outline: "none", width: 110 }} />
+                        </div>
+                        {simPrice && simQty && <div style={{ fontSize: 12, color: "#4b5563", marginTop: 16 }}>= <span style={{ color: "#94a3b8", fontWeight: 600 }}>${fmt2(parseFloat(simQty) * simPrice)}</span></div>}
+                        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                          <button onClick={doSimBuy} disabled={!simPrice} style={{ background: "linear-gradient(135deg,#065f46,#064e3b)", border: "1px solid #059669", color: "#34d399", borderRadius: 8, padding: "8px 24px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>BUY</button>
+                          <button onClick={doSimSell} disabled={!simPrice || simPaper.shares <= 0} style={{ background: simPaper.shares > 0 ? "linear-gradient(135deg,#7f1d1d,#6b1414)" : "#1a1a2e", border: `1px solid ${simPaper.shares > 0 ? "#dc2626" : "#374151"}`, color: simPaper.shares > 0 ? "#f87171" : "#374151", borderRadius: 8, padding: "8px 24px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: simPaper.shares > 0 ? "pointer" : "not-allowed" }}>SELL</button>
+                        </div>
+                      </div>
+
+                      {simMsg && (
+                        <div style={{ marginTop: 12, padding: "8px 14px", borderRadius: 8, background: simMsg.type === "ok" ? "#052e1688" : "#2d0a0a88", border: `1px solid ${simMsg.type === "ok" ? "#065f46" : "#7f1d1d"}`, color: simMsg.type === "ok" ? "#34d399" : "#f87171", fontSize: 12 }}>
+                          {simMsg.type === "ok" ? "✓" : "⚠"} {simMsg.text}
+                        </div>
+                      )}
+
+                      {/* Trade log */}
+                      {simPaper.trades.length > 0 && (
+                        <div style={{ marginTop: 18 }}>
+                          <div style={{ fontSize: 10, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Your trades this simulation</div>
+                          {simPaper.trades.map((t, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f172a", fontSize: 12 }}>
+                              <span style={{ background: t.type === "BUY" ? "#052e16" : "#2d0a0a", color: t.type === "BUY" ? "#34d399" : "#f87171", padding: "1px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{t.type}</span>
+                              <span style={{ color: "#6b7280" }}>{t.qty} shares</span>
+                              <span style={{ color: "#a5b4fc", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600 }}>${fmt2(t.price)}</span>
+                              <span style={{ color: "#4b5563" }}>${fmt2(t.total)}</span>
+                              <span style={{ color: "#374151", fontSize: 10 }}>{new Date(t.time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })}</span>
+                            </div>
+                          ))}
+                          {simDone && (
+                            <div style={{ marginTop: 14, padding: "14px 18px", borderRadius: 10, background: (() => { const final = simPaper.cash + simPaper.shares * (simTicks[simTicks.length - 1]?.price ?? 0); return final >= 10000 ? "#052e1688" : "#2d0a0a88"; })(), border: "1px solid #1e293b" }}>
+                              {(() => {
+                                const finalPrice = simTicks[simTicks.length - 1]?.price ?? 0;
+                                const finalVal = simPaper.cash + simPaper.shares * finalPrice;
+                                const pnl = finalVal - 10000;
+                                return (
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                                    <span style={{ fontSize: 13, color: "#94a3b8" }}>Final portfolio value</span>
+                                    <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 22, fontWeight: 700, color: pnl >= 0 ? "#34d399" : "#f87171" }}>
+                                      ${fmt2(finalVal)} <span style={{ fontSize: 13, opacity: 0.7 }}>({pnl >= 0 ? "+" : ""}${fmt2(pnl)})</span>
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── LIVE PAPER MODE ── */}
+            {!simMode && (
+              <>
             {/* Portfolio summary */}
             <div className="card" style={{ padding: "24px 28px" }}>
               <SectionTitle icon="◈" title="Your Virtual Portfolio" sub="Start with $10,000 — practice buying & selling SPCX with no real money at risk" />
@@ -1065,6 +1372,8 @@ export default function Pulsar() {
                   </table>
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         )}
