@@ -91,15 +91,17 @@ function ChartTooltip({ active, payload, label, range, startPrice }) {
   );
 }
 
-function StatCard({ label, value, sub, accent, flash, badge }) {
+function StatCard({ label, term, value, sub, accent, flash }) {
   return (
     <div className={`card${flash === "up" ? " flash-up" : flash === "down" ? " flash-down" : ""}`}
       style={{ padding: "16px 20px", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%", background: accent || "radial-gradient(circle,#1e1040,transparent)", opacity: 0.6 }} />
-      <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 6 }}>{label}</div>
+      {/* Plain label */}
+      <div style={{ fontSize: 11, color: "#c7d2fe", fontWeight: 600, marginBottom: 2 }}>{label}</div>
+      {/* Real trader term */}
+      {term && <div style={{ fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>{term}</div>}
       <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, fontWeight: 700, color: "#f1f5f9", letterSpacing: "-0.5px" }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>{sub}</div>}
-      {badge && <div style={{ position: "absolute", top: 12, right: 12, fontSize: 9, background: "#1e293b", color: "#94a3b8", padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5 }}>{badge}</div>}
+      {sub && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -409,14 +411,14 @@ export default function Pulsar() {
 
         {/* ── Key Metrics ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
-          <StatCard label="Company Value"     value={fmtMktCap(metrics?.marketCapitalization ?? profile?.marketCapitalization)} sub="Total worth of all shares" accent="radial-gradient(circle,#4c1d9522,transparent)" />
-          <StatCard label="Highest Price"     value={metrics?.["52WeekHigh"] ? `$${fmt2(metrics["52WeekHigh"])}` : "—"} sub={`Best price — ${metrics?.["52WeekHighDate"] ?? "last 52 weeks"}`} accent="radial-gradient(circle,#14532d22,transparent)" />
-          <StatCard label="Lowest Price"      value={metrics?.["52WeekLow"]  ? `$${fmt2(metrics["52WeekLow"])}` : "—"}  sub={`Cheapest point — ${metrics?.["52WeekLowDate"] ?? "last 52 weeks"}`} accent="radial-gradient(circle,#7f1d1d22,transparent)" />
-          <StatCard label="Daily Trades"      value={metrics?.["10DayAverageTradingVolume"] ? `${metrics["10DayAverageTradingVolume"].toFixed(1)}M` : "—"} sub="Avg shares bought & sold per day" accent="radial-gradient(circle,#1e3a5f22,transparent)" />
-          <StatCard label="Sales Growth"      value={metrics?.revenueGrowthQuarterlyYoy != null ? fmtPct(metrics.revenueGrowthQuarterlyYoy) : "—"} sub="How fast revenue is growing vs last year" accent="radial-gradient(circle,#064e3b22,transparent)" />
-          <StatCard label="Profit on Each $"  value={metrics?.grossMarginAnnual != null ? `${metrics.grossMarginAnnual.toFixed(1)}%` : "—"} sub="Kept after direct costs (higher = better)" accent="radial-gradient(circle,#1e1a4f22,transparent)" />
-          <StatCard label="Value vs Assets"   value={metrics?.pb != null ? `${metrics.pb.toFixed(1)}×` : "—"} sub="How much you pay per $1 of real assets" accent="radial-gradient(circle,#2d1b4e22,transparent)" />
-          <StatCard label="5-Day Gain/Loss"   value={metrics?.["5DayPriceReturnDaily"] != null ? fmtPct(metrics["5DayPriceReturnDaily"]) : "—"} sub="Price change over the last 5 trading days" accent="radial-gradient(circle,#0c2a4e22,transparent)" />
+          <StatCard label="Total Company Worth" term="Market Cap" value={fmtMktCap(metrics?.marketCapitalization ?? profile?.marketCapitalization)} sub="What SpaceX is worth if you bought every share today" accent="radial-gradient(circle,#4c1d9522,transparent)" />
+          <StatCard label="Best Price This Year" term="52-Week High" value={metrics?.["52WeekHigh"] ? `$${fmt2(metrics["52WeekHigh"])}` : "—"} sub={`Highest it ever traded — ${metrics?.["52WeekHighDate"] ?? ""}`} accent="radial-gradient(circle,#14532d22,transparent)" />
+          <StatCard label="Lowest Price This Year" term="52-Week Low" value={metrics?.["52WeekLow"] ? `$${fmt2(metrics["52WeekLow"])}` : "—"} sub={`Cheapest it has been — ${metrics?.["52WeekLowDate"] ?? ""}`} accent="radial-gradient(circle,#7f1d1d22,transparent)" />
+          <StatCard label="How Actively Traded" term="Avg Volume (10D)" value={metrics?.["10DayAverageTradingVolume"] ? `${metrics["10DayAverageTradingVolume"].toFixed(1)}M` : "—"} sub="Shares swapped daily — high = easy to buy or sell fast" accent="radial-gradient(circle,#1e3a5f22,transparent)" />
+          <StatCard label="Sales Growing?" term="Revenue Growth YoY" value={metrics?.revenueGrowthQuarterlyYoy != null ? fmtPct(metrics.revenueGrowthQuarterlyYoy) : "—"} sub="Making more than last year? Positive = business expanding" accent="radial-gradient(circle,#064e3b22,transparent)" />
+          <StatCard label="Profit Kept Per Sale" term="Gross Margin" value={metrics?.grossMarginAnnual != null ? `${metrics.grossMarginAnnual.toFixed(1)}%` : "—"} sub="Of every $1 earned, how much survives after direct costs" accent="radial-gradient(circle,#1e1a4f22,transparent)" />
+          <StatCard label="Cheap vs Real Assets?" term="Price-to-Book (P/B)" value={metrics?.pb != null ? `${metrics.pb.toFixed(1)}x` : "—"} sub="How much you pay per $1 of SpaceX's real assets — lower = cheaper" accent="radial-gradient(circle,#2d1b4e22,transparent)" />
+          <StatCard label="Last 5 Days" term="5-Day Return" value={metrics?.["5DayPriceReturnDaily"] != null ? fmtPct(metrics["5DayPriceReturnDaily"]) : "—"} sub="Did the stock rise or fall over the past week?" accent="radial-gradient(circle,#0c2a4e22,transparent)" />
         </div>
 
         {/* ── Tab navigation ── */}
@@ -492,23 +494,26 @@ export default function Pulsar() {
                 <SectionTitle icon="◎" title="Company Health" sub="How SpaceX is actually doing financially" />
                 <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   {[
-                    ["Earnings Per Share",        metrics?.epsAnnual != null ? `$${metrics.epsAnnual.toFixed(4)}` : "—"],
-                    ["Profit After All Costs",     metrics?.netProfitMarginAnnual != null ? `${metrics.netProfitMarginAnnual.toFixed(2)}%` : "—"],
-                    ["Profit Before Tax & Interest", metrics?.operatingMarginAnnual != null ? `${metrics.operatingMarginAnnual.toFixed(2)}%` : "—"],
-                    ["Return on Assets",           metrics?.roaRfy != null ? `${metrics.roaRfy.toFixed(2)}%` : "—"],
-                    ["Return on Shareholder Money", metrics?.roeRfy != null ? `${metrics.roeRfy.toFixed(2)}%` : "—"],
-                    ["Debt vs Equity",             metrics?.["totalDebt/totalEquityAnnual"] != null ? metrics["totalDebt/totalEquityAnnual"].toFixed(3) : "—"],
-                    ["Can Pay Short-Term Bills",   metrics?.currentRatioAnnual != null ? metrics.currentRatioAnnual.toFixed(2) : "—"],
-                    ["Cash Per Share",             metrics?.cashPerSharePerShareAnnual != null ? `$${metrics.cashPerSharePerShareAnnual.toFixed(4)}` : "—"],
-                    ["Gain Since Jan 1",           metrics?.yearToDatePriceReturnDaily != null ? fmtPct(metrics.yearToDatePriceReturnDaily) : "—"],
-                    ["vs S&P 500 This Year",       metrics?.["priceRelativeToS&P500Ytd"] != null ? fmtPct(metrics["priceRelativeToS&P500Ytd"]) : "—"],
-                  ].map(([label, val]) => {
+                    ["EPS",              "Earnings Per Share — profit made per share owned",          metrics?.epsAnnual != null ? `$${metrics.epsAnnual.toFixed(4)}` : "—"],
+                    ["Net Margin",       "Net Profit Margin — % of revenue left after ALL costs",      metrics?.netProfitMarginAnnual != null ? `${metrics.netProfitMarginAnnual.toFixed(2)}%` : "—"],
+                    ["Op. Margin",       "Operating Margin — profit before tax & interest payments",   metrics?.operatingMarginAnnual != null ? `${metrics.operatingMarginAnnual.toFixed(2)}%` : "—"],
+                    ["ROA",              "Return on Assets — how well SpaceX uses what it owns",       metrics?.roaRfy != null ? `${metrics.roaRfy.toFixed(2)}%` : "—"],
+                    ["ROE",              "Return on Equity — profit made from investor money",         metrics?.roeRfy != null ? `${metrics.roeRfy.toFixed(2)}%` : "—"],
+                    ["D/E Ratio",        "Debt-to-Equity — how much debt vs investor money (lower = safer)", metrics?.["totalDebt/totalEquityAnnual"] != null ? metrics["totalDebt/totalEquityAnnual"].toFixed(3) : "—"],
+                    ["Current Ratio",    "Current Ratio — can it pay short-term bills? Above 1 = yes", metrics?.currentRatioAnnual != null ? metrics.currentRatioAnnual.toFixed(2) : "—"],
+                    ["Cash/Share",       "Cash Per Share — liquid cash held for each share",           metrics?.cashPerSharePerShareAnnual != null ? `$${metrics.cashPerSharePerShareAnnual.toFixed(4)}` : "—"],
+                    ["YTD Return",       "Year-to-Date Return — gain or loss since Jan 1",             metrics?.yearToDatePriceReturnDaily != null ? fmtPct(metrics.yearToDatePriceReturnDaily) : "—"],
+                    ["vs S&P 500",       "Relative Performance — beating the US market? + = yes",     metrics?.["priceRelativeToS&P500Ytd"] != null ? fmtPct(metrics["priceRelativeToS&P500Ytd"]) : "—"],
+                  ].map(([term, plain, val]) => {
                     const isNeg = typeof val === "string" && val.startsWith("-") && val.includes("%");
                     const isPos = typeof val === "string" && val.startsWith("+");
                     return (
-                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>{label}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "'Space Grotesk',sans-serif", color: isPos ? "#34d399" : isNeg ? "#f87171" : "#94a3b8" }}>{val}</span>
+                      <div key={term} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #0f172a", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: "#c7d2fe", fontWeight: 600 }}>{term}</div>
+                          <div style={{ fontSize: 10, color: "#4b5563", marginTop: 1 }}>{plain}</div>
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif", color: isPos ? "#34d399" : isNeg ? "#f87171" : "#94a3b8", flexShrink: 0 }}>{val}</span>
                       </div>
                     );
                   })}
