@@ -90,39 +90,36 @@ function xTick(iso, range) {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, range, startPrice, highPrice, lowPrice }) {
+function ChartTooltip({ active, payload, label, range, allData }) {
   if (!active || !payload?.length) return null;
   const pricePayload = payload.find(p => p.dataKey === "price");
   const ma7Payload   = payload.find(p => p.dataKey === "ma7");
   const ma20Payload  = payload.find(p => p.dataKey === "ma20");
   const val = pricePayload?.value;
   if (val == null) return null;
-  const delta = startPrice ? val - startPrice : null;
-  const pct   = startPrice ? ((val - startPrice) / startPrice) * 100 : null;
+
+  // Find previous tick
+  const idx  = allData ? allData.findIndex(p => p.time === label) : -1;
+  const prev = idx > 0 ? allData[idx - 1]?.price : null;
+  const delta = prev != null ? val - prev : null;
+  const pct   = prev != null && prev !== 0 ? (delta / prev) * 100 : null;
   const up    = (delta ?? 0) >= 0;
-  const isHigh = highPrice != null && Math.abs(val - highPrice) < 0.01;
-  const isLow  = lowPrice  != null && Math.abs(val - lowPrice)  < 0.01;
-  // Plain-English context sentence
-  const ctxColor = up ? "#34d399" : "#f87171";
-  const ctxMsg = delta == null ? null
-    : up && delta > 0
-      ? `Price climbed $${fmt2(delta)} (${pct.toFixed(2)}%) since chart started — buyers winning`
-      : delta === 0
-      ? "Price unchanged from chart start"
-      : `Price fell $${fmt2(Math.abs(delta))} (${Math.abs(pct).toFixed(2)}%) since chart start — sellers in control`;
+
   return (
-    <div style={{ background: "#0b1220cc", backdropFilter: "blur(6px)", border: "1px solid #1e2d50", borderRadius: 12, padding: "12px 16px", minWidth: 200 }}>
-      <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 6, letterSpacing: 1 }}>{xTick(label, range)}</div>
-      <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 22, fontFamily: "'Space Grotesk',sans-serif", letterSpacing: "-0.5px" }}>
+    <div style={{ background: "#0b1220ee", backdropFilter: "blur(8px)", border: "1px solid #1e2d50", borderRadius: 10, padding: "10px 14px", minWidth: 170 }}>
+      <div style={{ color: "#4b5563", fontSize: 10, marginBottom: 5, letterSpacing: 1 }}>{xTick(label, range)}</div>
+      <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 20, fontFamily: "'Space Grotesk',sans-serif", letterSpacing: "-0.5px", marginBottom: delta != null ? 4 : 0 }}>
         ${fmt2(val)}
-        {isHigh && <span style={{ marginLeft: 8, fontSize: 10, color: "#34d399", fontWeight: 600, verticalAlign: "middle" }}>▲ PERIOD HIGH</span>}
-        {isLow  && <span style={{ marginLeft: 8, fontSize: 10, color: "#f87171", fontWeight: 600, verticalAlign: "middle" }}>▼ PERIOD LOW</span>}
       </div>
-      {ctxMsg && <div style={{ fontSize: 11, color: ctxColor, marginTop: 4, lineHeight: 1.4 }}>{ctxMsg}</div>}
+      {delta != null && (
+        <div style={{ fontSize: 12, fontWeight: 600, color: up ? "#34d399" : "#f87171" }}>
+          {up ? "▲" : "▼"} {up && delta > 0 ? "+" : ""}{fmt2(delta)} ({pct != null ? (up && pct > 0 ? "+" : "") + pct.toFixed(2) + "%" : "—"}) vs prev tick
+        </div>
+      )}
       {(ma7Payload?.value != null || ma20Payload?.value != null) && (
-        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #1e2d50", display: "flex", flexDirection: "column", gap: 3 }}>
-          {ma7Payload?.value  != null && <div style={{ fontSize: 10, color: "#fbbf24" }}>7-period avg: <b>${fmt2(ma7Payload.value)}</b> {val > ma7Payload.value ? "↑ price above — bullish" : "↓ price below — bearish"}</div>}
-          {ma20Payload?.value != null && <div style={{ fontSize: 10, color: "#818cf8" }}>20-period avg: <b>${fmt2(ma20Payload.value)}</b> {val > ma20Payload.value ? "↑ price above — bullish" : "↓ price below — bearish"}</div>}
+        <div style={{ marginTop: 7, paddingTop: 7, borderTop: "1px solid #1a2540", display: "flex", flexDirection: "column", gap: 3 }}>
+          {ma7Payload?.value  != null && <div style={{ fontSize: 10, color: "#fbbf24" }}>MA7 <b>${fmt2(ma7Payload.value)}</b> · {val >= ma7Payload.value ? <span style={{color:"#34d399"}}>above ↑</span> : <span style={{color:"#f87171"}}>below ↓</span>}</div>}
+          {ma20Payload?.value != null && <div style={{ fontSize: 10, color: "#818cf8" }}>MA20 <b>${fmt2(ma20Payload.value)}</b> · {val >= ma20Payload.value ? <span style={{color:"#34d399"}}>above ↑</span> : <span style={{color:"#f87171"}}>below ↓</span>}</div>}
         </div>
       )}
     </div>
@@ -809,25 +806,21 @@ export default function Pulsar() {
                 <ResponsiveContainer width="100%" height={isMobile ? 220 : 320}>
                   {chartType === "bar" ? (
                     /* ── Bar chart: each bar = one price tick, green=up red=down ── */
-                    <BarChart data={chartWithMA} margin={{ top: 6, right: 8, bottom: 0, left: 0 }} barCategoryGap="15%">
-                      <CartesianGrid vertical={false} stroke="#0f172a" />
+                    <BarChart data={chartWithMA} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="20%">
                       <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={60} dy={6} />
-                      <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={56} />
-                      <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} highPrice={maxP} lowPrice={minP} />} cursor={{ fill: "#1e2d5022" }} />
-                      {chartData.length > 1 && <ReferenceLine y={maxP} stroke="#34d39944" strokeDasharray="3 4" label={{ value: `HIGH $${fmt2(maxP)}`, position: "insideTopRight", fill: "#34d39977", fontSize: 9 }} />}
-                      {chartData.length > 1 && <ReferenceLine y={minP} stroke="#f8717144" strokeDasharray="3 4" label={{ value: `LOW $${fmt2(minP)}`, position: "insideBottomRight", fill: "#f8717177", fontSize: 9 }} />}
-                      {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `NOW $${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
-                      <Bar dataKey="price" radius={[3, 3, 0, 0]} maxBarSize={24}>
+                      <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={52} />
+                      <Tooltip content={<ChartTooltip range={range} allData={chartWithMA} />} cursor={{ fill: "#ffffff08" }} />
+                      <Bar dataKey="price" radius={[2, 2, 0, 0]} maxBarSize={20}>
                         {chartWithMA.map((entry, i) => {
                           const prev = chartWithMA[i - 1];
                           const up = prev ? entry.price >= prev.price : true;
-                          return <Cell key={i} fill={up ? "#34d39988" : "#f8717188"} stroke={up ? "#34d399" : "#f87171"} strokeWidth={1} />;
+                          return <Cell key={i} fill={up ? "#34d39966" : "#f8717166"} stroke={up ? "#34d399" : "#f87171"} strokeWidth={1} />;
                         })}
                       </Bar>
                     </BarChart>
                   ) : (
                     /* ── Line (area) chart ── */
-                    <AreaChart data={chartWithMA} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+                    <AreaChart data={chartWithMA} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                       <defs>
                         {(() => {
                           const first = chartData[0]?.price ?? 0, last = chartData[chartData.length - 1]?.price ?? 0, up = last >= first;
@@ -838,20 +831,16 @@ export default function Pulsar() {
                                 <stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} />
                               </linearGradient>
                               <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={c1} stopOpacity={0.22} /><stop offset="85%" stopColor={c1} stopOpacity={0.02} /><stop offset="100%" stopColor={c1} stopOpacity={0} />
+                                <stop offset="0%" stopColor={c1} stopOpacity={0.18} /><stop offset="90%" stopColor={c1} stopOpacity={0} />
                               </linearGradient>
                             </>
                           );
                         })()}
                       </defs>
-                      <CartesianGrid vertical={false} stroke="#0f172a" strokeDasharray="0" />
                       <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={60} dy={6} />
-                      <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={56} />
-                      <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} highPrice={maxP} lowPrice={minP} />} cursor={{ stroke: "#334155", strokeWidth: 1, strokeDasharray: "4 3" }} />
-                      {chartData.length > 1 && <ReferenceLine y={maxP} stroke="#34d39944" strokeDasharray="3 4" label={{ value: `HIGH $${fmt2(maxP)}`, position: "insideTopRight", fill: "#34d39977", fontSize: 9 }} />}
-                      {chartData.length > 1 && <ReferenceLine y={minP} stroke="#f8717144" strokeDasharray="3 4" label={{ value: `LOW $${fmt2(minP)}`, position: "insideBottomRight", fill: "#f8717177", fontSize: 9 }} />}
-                      {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `NOW $${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
-                      <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2.5} fill="url(#areaFill)" dot={false} activeDot={{ r: 6, fill: "#a78bfa", stroke: "#1e1040", strokeWidth: 2 }} />
+                      <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={52} />
+                      <Tooltip content={<ChartTooltip range={range} allData={chartWithMA} />} cursor={{ stroke: "#334155", strokeWidth: 1, strokeDasharray: "4 3" }} />
+                      <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 5, fill: "#a78bfa", stroke: "#0b1220", strokeWidth: 2 }} />
                       {showMA7  && <Area type="monotone" dataKey="ma7"  stroke="#fbbf24" strokeWidth={1.5} fill="none" dot={false} connectNulls />}
                       {showMA20 && <Area type="monotone" dataKey="ma20" stroke="#818cf8" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="4 3" connectNulls />}
                     </AreaChart>
