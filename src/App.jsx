@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid, BarChart, Bar, Cell } from "recharts";
 import { dbInsertPrice, dbLoadPriceHistory } from "./supabase.js";
 import { searchTz, tzLabel } from "./countryTz.js";
@@ -9,6 +9,23 @@ const SYMBOL = "SPCX";
 const POLL_MS = 15000;
 const LISTING_UNIX = Math.floor(new Date("2026-06-12T13:30:00Z").getTime() / 1000);
 const LISTING_MS   = LISTING_UNIX * 1000;
+
+// ── Device detection ─────────────────────────────────────────────────────────
+function useDevice() {
+  const get = () => {
+    const w = window.innerWidth;
+    if (w < 640)  return "mobile";
+    if (w < 1024) return "tablet";
+    return "desktop";
+  };
+  const [device, setDevice] = useState(get);
+  useLayoutEffect(() => {
+    const handler = () => setDevice(get());
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return device;
+}
 
 // ── In-memory DB ─────────────────────────────────────────────────────────────
 const DB = { price_history: [], nextId: 1 };
@@ -127,6 +144,10 @@ function SectionTitle({ icon, title, sub }) {
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function Pulsar() {
   // Core market data
+  const device = useDevice();
+  const isMobile = device === "mobile";
+  const isTablet = device === "tablet";
+
   const [quote, setQuote]       = useState(null);
   const [profile, setProfile]   = useState(null);
   const [metrics, setMetrics]   = useState(null);
@@ -498,29 +519,131 @@ export default function Pulsar() {
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
-        @keyframes twinkle { 0%,100%{opacity:.05} 50%{opacity:.6} }
-        @keyframes spin     { to{transform:rotate(360deg)} }
+        @keyframes twinkle    { 0%,100%{opacity:.05} 50%{opacity:.6} }
+        @keyframes spin       { to{transform:rotate(360deg)} }
         @keyframes flash-up   { 0%{background:#064e3b66} 100%{background:transparent} }
         @keyframes flash-down { 0%{background:#7f1d1d55} 100%{background:transparent} }
         @keyframes glow-pulse { 0%,100%{box-shadow:0 0 6px #7c3aed33} 50%{box-shadow:0 0 18px #7c3aed77,0 0 32px #7c3aed22} }
         @keyframes dot-pulse  { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:.5} }
         @keyframes slideIn    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+
         .card { background:linear-gradient(145deg,#0b1220dd,#0e1628dd); border:1px solid #161f35; border-radius:14px; backdrop-filter:blur(8px); transition:border-color .2s; }
         .card:hover { border-color:#1e2d50; }
         .flash-up   { animation:flash-up   .8s ease-out; }
         .flash-down { animation:flash-down .8s ease-out; }
-        .tab-btn { background:transparent; border:none; cursor:pointer; font-family:inherit; padding:8px 18px; font-size:12px; font-weight:600; letter-spacing:.5px; border-bottom:2px solid transparent; transition:all .15s; color:#4b5563; }
+
+        /* ── Top tab bar (desktop/tablet) ── */
+        .tab-bar { display:flex; gap:0; border-bottom:1px solid #161f35; margin-bottom:20px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+        .tab-bar::-webkit-scrollbar { display:none; }
+        .tab-btn { background:transparent; border:none; cursor:pointer; font-family:inherit; padding:10px 18px; font-size:12px; font-weight:600; letter-spacing:.5px; border-bottom:2px solid transparent; transition:all .15s; color:#4b5563; white-space:nowrap; flex-shrink:0; }
         .tab-btn.active { color:#a78bfa; border-bottom-color:#7c3aed; }
         .tab-btn:hover:not(.active) { color:#6b7280; }
+
+        /* ── Bottom tab bar (mobile) ── */
+        .bottom-nav { display:none; }
+
+        /* ── News ── */
         .news-card { border-bottom:1px solid #0f172a; padding:14px 0; animation:slideIn .3s ease; }
         .news-card:last-child { border-bottom:none; }
         .news-card:hover .news-headline { color:#a78bfa !important; }
+
+        /* ── Scrollbar ── */
         ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:#060a12} ::-webkit-scrollbar-thumb{background:#161f35;border-radius:2px}
-        * { box-sizing:border-box; }
+
         input[type=date],input[type=time],input[type=number] { color-scheme:dark; }
+
+        /* ════════════════════════════════
+           TABLET  640px – 1023px
+        ════════════════════════════════ */
+        @media (max-width: 1023px) {
+          .peers-grid { grid-template-columns: 1fr !important; }
+          .ohlc-grid  { grid-template-columns: 1fr 1fr !important; gap: 6px 16px !important; }
+        }
+
+        /* ════════════════════════════════
+           MOBILE  < 640px
+        ════════════════════════════════ */
+        @media (max-width: 639px) {
+          /* Switch to bottom nav */
+          .tab-bar  { display: none; }
+          .bottom-nav {
+            display: flex;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #080d18;
+            border-top: 1px solid #161f35;
+            z-index: 100;
+            padding: 0;
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          .bottom-nav button {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #4b5563;
+            font-family: inherit;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: .3px;
+            padding: 10px 4px 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: color .15s;
+          }
+          .bottom-nav button.active { color: #a78bfa; }
+          .bottom-nav button .nav-icon { font-size: 18px; line-height: 1; }
+
+          /* Add bottom padding so content clears the nav bar */
+          .page-content { padding-bottom: 80px !important; }
+
+          /* Hero price */
+          .hero-price { font-size: 36px !important; letter-spacing: -1px !important; }
+          .hero-card  { padding: 16px !important; }
+          .ohlc-grid  { grid-template-columns: 1fr 1fr !important; gap: 8px 12px !important; }
+
+          /* Cards */
+          .card { border-radius: 10px; }
+
+          /* Metrics — 2 col on mobile */
+          .metrics-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+
+          /* Fundamentals + Peers stack vertically */
+          .two-col { grid-template-columns: 1fr !important; }
+
+          /* Comparison middle arrow */
+          .cmp-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+          .cmp-arrow { display: none !important; }
+
+          /* Chart height */
+          .chart-height { height: 200px !important; }
+
+          /* Table: hide # column */
+          .col-num { display: none !important; }
+
+          /* Simulator speed buttons */
+          .speed-btns { flex-wrap: wrap !important; }
+
+          /* General text size reduction */
+          .section-sub { font-size: 10px !important; }
+
+          /* Stat card values */
+          .stat-val { font-size: 16px !important; }
+
+          /* Peer bar chart */
+          .peer-bar { height: 90px !important; }
+
+          /* Hide footer on mobile */
+          .footer { display: none; }
+        }
       `}</style>
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: 1200, margin: "0 auto", padding: "20px 14px 60px" }}>
+      <div className="page-content" style={{ position: "relative", zIndex: 1, maxWidth: 1200, margin: "0 auto", padding: isMobile ? "14px 10px 60px" : "20px 14px 60px" }}>
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
@@ -542,7 +665,7 @@ export default function Pulsar() {
 
         {/* ── Price Hero ── */}
         <div className={`card${flash === "up" ? " flash-up" : flash === "down" ? " flash-down" : ""}`}
-          style={{ padding: "24px 28px", marginBottom: 16, display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
+          className="hero-card" style={{ padding: "24px 28px", marginBottom: 16, display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: "#4b5563", textTransform: "uppercase", letterSpacing: 2 }}>Space Exploration Technologies · NYSE</span>
@@ -552,7 +675,7 @@ export default function Pulsar() {
             {loading ? (
               <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 52, fontWeight: 700, color: "#1e2d50", letterSpacing: "-2px" }}>—</div>
             ) : (
-              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 52, fontWeight: 700, letterSpacing: "-2px", color: "#f8fafc" }}>
+              <div className="hero-price" style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 52, fontWeight: 700, letterSpacing: "-2px", color: "#f8fafc" }}>
                 ${fmt2(price)}
               </div>
             )}
@@ -568,7 +691,7 @@ export default function Pulsar() {
             </div>
           </div>
           {/* OHLC grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 32px", textAlign: "right" }}>
+          <div className="ohlc-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 32px", textAlign: "right" }}>
             {[
               ["Opened At",       `$${fmt2(quote?.o)}`],
               ["Yesterday Close", `$${fmt2(quote?.pc)}`],
@@ -584,7 +707,7 @@ export default function Pulsar() {
         </div>
 
         {/* ── Key Metrics ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
+        <div className="metrics-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
           <StatCard label="Total Company Worth" term="Market Cap" value={fmtMktCap(metrics?.marketCapitalization ?? profile?.marketCapitalization)} sub="What SpaceX is worth if you bought every share today" accent="radial-gradient(circle,#4c1d9522,transparent)" />
           <StatCard label="Best Price This Year" term="52-Week High" value={metrics?.["52WeekHigh"] ? `$${fmt2(metrics["52WeekHigh"])}` : "—"} sub={`Highest it ever traded — ${metrics?.["52WeekHighDate"] ?? ""}`} accent="radial-gradient(circle,#14532d22,transparent)" />
           <StatCard label="Lowest Price This Year" term="52-Week Low" value={metrics?.["52WeekLow"] ? `$${fmt2(metrics["52WeekLow"])}` : "—"} sub={`Cheapest it has been — ${metrics?.["52WeekLowDate"] ?? ""}`} accent="radial-gradient(circle,#7f1d1d22,transparent)" />
@@ -595,8 +718,8 @@ export default function Pulsar() {
           <StatCard label="Last 5 Days" term="5-Day Return" value={metrics?.["5DayPriceReturnDaily"] != null ? fmtPct(metrics["5DayPriceReturnDaily"]) : "—"} sub="Did the stock rise or fall over the past week?" accent="radial-gradient(circle,#0c2a4e22,transparent)" />
         </div>
 
-        {/* ── Tab navigation ── */}
-        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #161f35", marginBottom: 20 }}>
+        {/* ── Tab navigation (desktop/tablet) ── */}
+        <div className="tab-bar">
           {[["overview","Overview"],["trade","Paper Trade"],["learn","Learn Trading"],["news","News Feed"],["table","Price Log"],["calculator","Calculator"]].map(([id, label]) => (
             <button key={id} className={`tab-btn${activeTab === id ? " active" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
           ))}
@@ -627,7 +750,7 @@ export default function Pulsar() {
               </div>
 
               {chartLoading || loading ? <LoadingPulse /> : (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={isMobile ? 200 : 300}>
                   <AreaChart data={chartWithMA} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       {(() => {
@@ -667,7 +790,7 @@ export default function Pulsar() {
             </div>
 
             {/* Fundamentals + Peers side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
+            <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
 
               {/* Fundamentals */}
               <div className="card" style={{ padding: "22px" }}>
@@ -738,7 +861,7 @@ export default function Pulsar() {
                 {peers.length > 0 && price && (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontSize: 10, color: "#4b5563", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Who gained & who lost today</div>
-                    <ResponsiveContainer width="100%" height={120}>
+                    <ResponsiveContainer className="peer-bar" width="100%" height={120}>
                       <BarChart data={[{ symbol: "SPCX", pct: changePct ?? 0 }, ...peers.map(p => ({ symbol: p.symbol, pct: p.change ?? 0 }))]} margin={{ top: 0, right: 0, bottom: 0, left: -30 }}>
                         <XAxis dataKey="symbol" tick={{ fill: "#4b5563", fontSize: 10 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill: "#374151", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => `${v.toFixed(1)}%`} />
@@ -775,7 +898,7 @@ export default function Pulsar() {
               ) : (
                 <>
                   {/* Main comparison display */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, alignItems: "center", marginBottom: 20 }}>
+                  <div className="cmp-grid" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, alignItems: "center", marginBottom: 20 }}>
 
                     {/* THEN */}
                     <div className="card" style={{ padding: "20px 24px", background: "#060a12", textAlign: "center" }}>
@@ -791,7 +914,7 @@ export default function Pulsar() {
                     </div>
 
                     {/* Arrow + delta */}
-                    <div style={{ textAlign: "center", minWidth: 100 }}>
+                    <div className="cmp-arrow" style={{ textAlign: "center", minWidth: 100 }}>
                       <div style={{ fontSize: 28, color: cmpResult.isUp ? "#34d399" : "#f87171", lineHeight: 1 }}>
                         {cmpResult.isUp ? "↑" : "↓"}
                       </div>
@@ -947,7 +1070,7 @@ export default function Pulsar() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead style={{ position: "sticky", top: 0, background: "#0b1220", zIndex: 1 }}>
                   <tr>{["#", "Price", "Change", "Date", "Time"].map(h => (
-                    <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "8px 14px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                    <th key={h} className={h === "#" ? "col-num" : ""} style={{ textAlign: "left", color: "#6b7280", fontWeight: 600, padding: "8px 14px", borderBottom: "1px solid #1e293b", letterSpacing: 1, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                   ))}</tr>
                 </thead>
                 <tbody>
@@ -958,7 +1081,7 @@ export default function Pulsar() {
                     const ts = new Date(r.timestamp);
                     return (
                       <tr key={r.id} style={{ borderBottom: "1px solid #0b1220", background: i === 0 ? "#0f172a44" : "transparent" }}>
-                        <td style={{ padding: "7px 14px", color: "#374151", fontSize: 11 }}>{filteredLog.length - i}</td>
+                        <td className="col-num" style={{ padding: "7px 14px", color: "#374151", fontSize: 11 }}>{filteredLog.length - i}</td>
                         <td style={{ padding: "7px 14px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, color: "#a5b4fc" }}>${fmt2(r.price)}</td>
                         <td style={{ padding: "7px 14px", fontSize: 11 }}>
                           {delta !== null ? <span style={{ color: up ? "#34d399" : "#f87171", fontWeight: 600 }}>{up ? "▲" : "▼"} {up && delta > 0 ? "+" : ""}{fmt2(delta)}</span> : <span style={{ color: "#374151" }}>—</span>}
@@ -1090,7 +1213,7 @@ export default function Pulsar() {
 
                       <div>
                         <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Playback speed</div>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div className="speed-btns" style={{ display: "flex", gap: 6 }}>
                           {[["2 min", 120000], ["30 sec", 30000], ["10 sec", 10000], ["Fast", 2000]].map(([label, val]) => (
                             <button key={val} onClick={() => setSimSpeed(val)} style={{ background: simSpeed === val ? "linear-gradient(135deg,#170d38,#0f1a35)" : "#080d18", border: `1px solid ${simSpeed === val ? "#5b21b6" : "#1e293b"}`, color: simSpeed === val ? "#a78bfa" : "#4b5563", borderRadius: 7, padding: "8px 14px", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>
                           ))}
@@ -1472,10 +1595,31 @@ export default function Pulsar() {
           </div>
         )}
 
-        <div style={{ marginTop: 20, textAlign: "center", fontSize: 10, color: "#4b5563", letterSpacing: 1.5 }}>
+        <div className="footer" style={{ marginTop: 20, textAlign: "center", fontSize: 10, color: "#4b5563", letterSpacing: 1.5 }}>
           PULSAR · SPCX · DATA BY FINNHUB · {new Date().getFullYear()}
         </div>
       </div>
+
+      {/* Mobile bottom navigation — hidden on tablet/desktop via CSS */}
+      <nav className="bottom-nav">
+        {[
+          ["overview",   "📊", "Overview"],
+          ["trade",      "💹", "Trade"],
+          ["learn",      "🎓", "Learn"],
+          ["news",       "📰", "News"],
+          ["table",      "🗃️",  "Log"],
+          ["calculator", "🧮", "Calc"],
+        ].map(([id, icon, label]) => (
+          <button
+            key={id}
+            className={activeTab === id ? "active" : ""}
+            onClick={() => setActiveTab(id)}
+          >
+            <span className="nav-icon">{icon}</span>
+            {label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
