@@ -90,18 +90,39 @@ function xTick(iso, range) {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, range, startPrice }) {
+function ChartTooltip({ active, payload, label, range, startPrice, highPrice, lowPrice }) {
   if (!active || !payload?.length) return null;
-  const val = payload[0]?.value;
+  const pricePayload = payload.find(p => p.dataKey === "price");
+  const ma7Payload   = payload.find(p => p.dataKey === "ma7");
+  const ma20Payload  = payload.find(p => p.dataKey === "ma20");
+  const val = pricePayload?.value;
+  if (val == null) return null;
   const delta = startPrice ? val - startPrice : null;
-  const up = delta >= 0;
+  const pct   = startPrice ? ((val - startPrice) / startPrice) * 100 : null;
+  const up    = (delta ?? 0) >= 0;
+  const isHigh = highPrice != null && Math.abs(val - highPrice) < 0.01;
+  const isLow  = lowPrice  != null && Math.abs(val - lowPrice)  < 0.01;
+  // Plain-English context sentence
+  const ctxColor = up ? "#34d399" : "#f87171";
+  const ctxMsg = delta == null ? null
+    : up && delta > 0
+      ? `Price climbed $${fmt2(delta)} (${pct.toFixed(2)}%) since chart started — buyers winning`
+      : delta === 0
+      ? "Price unchanged from chart start"
+      : `Price fell $${fmt2(Math.abs(delta))} (${Math.abs(pct).toFixed(2)}%) since chart start — sellers in control`;
   return (
-    <div style={{ background: "#0b1220", border: "1px solid #1e2d50", borderRadius: 10, padding: "10px 16px" }}>
-      <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 4, letterSpacing: 1 }}>{xTick(label, range)}</div>
-      <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 18, fontFamily: "'Space Grotesk',sans-serif" }}>${fmt2(val)}</div>
-      {delta !== null && (
-        <div style={{ fontSize: 11, color: up ? "#34d399" : "#f87171", marginTop: 3 }}>
-          {up ? "▲" : "▼"} {up && delta > 0 ? "+" : ""}{fmt2(delta)} from open
+    <div style={{ background: "#0b1220cc", backdropFilter: "blur(6px)", border: "1px solid #1e2d50", borderRadius: 12, padding: "12px 16px", minWidth: 200 }}>
+      <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 6, letterSpacing: 1 }}>{xTick(label, range)}</div>
+      <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 22, fontFamily: "'Space Grotesk',sans-serif", letterSpacing: "-0.5px" }}>
+        ${fmt2(val)}
+        {isHigh && <span style={{ marginLeft: 8, fontSize: 10, color: "#34d399", fontWeight: 600, verticalAlign: "middle" }}>▲ PERIOD HIGH</span>}
+        {isLow  && <span style={{ marginLeft: 8, fontSize: 10, color: "#f87171", fontWeight: 600, verticalAlign: "middle" }}>▼ PERIOD LOW</span>}
+      </div>
+      {ctxMsg && <div style={{ fontSize: 11, color: ctxColor, marginTop: 4, lineHeight: 1.4 }}>{ctxMsg}</div>}
+      {(ma7Payload?.value != null || ma20Payload?.value != null) && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #1e2d50", display: "flex", flexDirection: "column", gap: 3 }}>
+          {ma7Payload?.value  != null && <div style={{ fontSize: 10, color: "#fbbf24" }}>7-period avg: <b>${fmt2(ma7Payload.value)}</b> {val > ma7Payload.value ? "↑ price above — bullish" : "↓ price below — bearish"}</div>}
+          {ma20Payload?.value != null && <div style={{ fontSize: 10, color: "#818cf8" }}>20-period avg: <b>${fmt2(ma20Payload.value)}</b> {val > ma20Payload.value ? "↑ price above — bullish" : "↓ price below — bearish"}</div>}
         </div>
       )}
     </div>
@@ -155,6 +176,8 @@ export default function Pulsar() {
   const [peers, setPeers]       = useState([]);
   const [chartData, setChartData] = useState([]);
   const [range, setRange]       = useState("1D");
+  const [showMA7, setShowMA7]   = useState(true);
+  const [showMA20, setShowMA20] = useState(true);
 
   // UI state
   const [flash, setFlash]       = useState(null);
@@ -749,8 +772,31 @@ export default function Pulsar() {
                 </div>
               </div>
 
+              {/* ── Trend banner ── */}
+              {!chartLoading && !loading && chartData.length >= 2 && (() => {
+                const first = chartData[0].price, last = chartData[chartData.length - 1].price;
+                const d = last - first, dp = (d / first) * 100, up = d >= 0;
+                const lastMA7  = [...chartWithMA].reverse().find(p => p.ma7  != null)?.ma7;
+                const lastMA20 = [...chartWithMA].reverse().find(p => p.ma20 != null)?.ma20;
+                const aboveMA7  = lastMA7  != null && last > lastMA7;
+                const aboveMA20 = lastMA20 != null && last > lastMA20;
+                const signal = (aboveMA7 && aboveMA20) ? "Strong bullish" : (!aboveMA7 && !aboveMA20) ? "Strong bearish" : aboveMA7 ? "Mildly bullish" : "Mildly bearish";
+                const sigColor = signal.includes("bullish") ? "#34d399" : "#f87171";
+                return (
+                  <div style={{ marginBottom: 14, borderRadius: 10, padding: "10px 16px", background: up ? "#052e1633" : "#2d0a0a33", border: `1px solid ${up ? "#065f4633" : "#7f1d1d33"}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontSize: 12, color: up ? "#6ee7b7" : "#fca5a5", lineHeight: 1.5 }}>
+                      <span style={{ fontWeight: 700 }}>{up ? "📈" : "📉"} {range} Trend: </span>
+                      SPCX {up ? "rose" : "fell"} <b>${fmt2(Math.abs(d))}</b> ({up ? "+" : ""}{dp.toFixed(2)}%) — price is {aboveMA7 ? "above" : "below"} the short-term average
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: sigColor, background: sigColor + "22", border: `1px solid ${sigColor}44`, borderRadius: 6, padding: "3px 10px" }}>
+                      {signal} signal
+                    </div>
+                  </div>
+                );
+              })()}
+
               {chartLoading || loading ? <LoadingPulse /> : (
-                <ResponsiveContainer width="100%" height={isMobile ? 200 : 300}>
+                <ResponsiveContainer width="100%" height={isMobile ? 220 : 320}>
                   <AreaChart data={chartWithMA} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       {(() => {
@@ -762,7 +808,7 @@ export default function Pulsar() {
                               <stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} />
                             </linearGradient>
                             <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={c1} stopOpacity={0.2} /><stop offset="85%" stopColor={c1} stopOpacity={0.02} /><stop offset="100%" stopColor={c1} stopOpacity={0} />
+                              <stop offset="0%" stopColor={c1} stopOpacity={0.22} /><stop offset="85%" stopColor={c1} stopOpacity={0.02} /><stop offset="100%" stopColor={c1} stopOpacity={0} />
                             </linearGradient>
                           </>
                         );
@@ -771,22 +817,49 @@ export default function Pulsar() {
                     <CartesianGrid vertical={false} stroke="#0f172a" strokeDasharray="0" />
                     <XAxis dataKey="time" tickFormatter={v => xTick(v, range)} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={60} dy={6} />
                     <YAxis domain={[minP - pad, maxP + pad]} tick={{ fill: "#374151", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(1)}`} width={56} />
-                    <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} />} cursor={{ stroke: "#1e2d50", strokeWidth: 1, strokeDasharray: "4 3" }} />
-                    {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `$${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
-                    <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2} fill="url(#areaFill)" dot={false} activeDot={{ r: 5, fill: "#a78bfa", stroke: "#1e1040", strokeWidth: 2 }} />
-                    <Area type="monotone" dataKey="ma7"  stroke="#fbbf24" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="0" connectNulls />
-                    <Area type="monotone" dataKey="ma20" stroke="#818cf8" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="4 3" connectNulls />
+                    <Tooltip content={<ChartTooltip range={range} startPrice={chartData[0]?.price} highPrice={maxP} lowPrice={minP} />} cursor={{ stroke: "#334155", strokeWidth: 1, strokeDasharray: "4 3" }} />
+                    {/* Period high & low reference lines */}
+                    {chartData.length > 1 && <ReferenceLine y={maxP} stroke="#34d39944" strokeDasharray="3 4" label={{ value: `HIGH $${fmt2(maxP)}`, position: "insideTopRight", fill: "#34d39977", fontSize: 9 }} />}
+                    {chartData.length > 1 && <ReferenceLine y={minP} stroke="#f8717144" strokeDasharray="3 4" label={{ value: `LOW $${fmt2(minP)}`, position: "insideBottomRight", fill: "#f8717177", fontSize: 9 }} />}
+                    {price && <ReferenceLine y={price} stroke="#1e2d5088" strokeDasharray="3 4" label={{ value: `NOW $${fmt2(price)}`, position: "right", fill: "#4b5563", fontSize: 9 }} />}
+                    <Area type="monotone" dataKey="price" stroke="url(#strokeGrad)" strokeWidth={2.5} fill="url(#areaFill)" dot={false} activeDot={{ r: 6, fill: "#a78bfa", stroke: "#1e1040", strokeWidth: 2 }} />
+                    {showMA7  && <Area type="monotone" dataKey="ma7"  stroke="#fbbf24" strokeWidth={1.5} fill="none" dot={false} connectNulls />}
+                    {showMA20 && <Area type="monotone" dataKey="ma20" stroke="#818cf8" strokeWidth={1.5} fill="none" dot={false} strokeDasharray="4 3" connectNulls />}
                   </AreaChart>
                 </ResponsiveContainer>
               )}
-              <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#374151" }}>
-                <span>{chartData.length} data points</span>
-                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 2, background: "#fbbf24", borderRadius: 1 }} /> MA7 — 7-period avg</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 2, background: "#818cf8", borderRadius: 1, borderTop: "2px dashed #818cf8" }} /> MA20 — 20-period avg</span>
-                  <span>Finnhub · live</span>
+
+              {/* ── MA toggle pills + legend ── */}
+              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontSize: 10, color: "#374151", paddingTop: 4 }}>{chartData.length} data points · Finnhub</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {/* MA7 toggle */}
+                  <button onClick={() => setShowMA7(v => !v)} style={{ display: "flex", alignItems: "center", gap: 6, background: showMA7 ? "#fbbf2422" : "#080d18", border: `1px solid ${showMA7 ? "#fbbf2466" : "#1e293b"}`, borderRadius: 20, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
+                    <span style={{ display: "inline-block", width: 16, height: 2, background: showMA7 ? "#fbbf24" : "#374151", borderRadius: 1, flexShrink: 0 }} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: showMA7 ? "#fbbf24" : "#4b5563" }}>MA7</span>
+                    <span style={{ fontSize: 9, color: showMA7 ? "#92400e" : "#374151" }}>7-day avg · short trend</span>
+                  </button>
+                  {/* MA20 toggle */}
+                  <button onClick={() => setShowMA20(v => !v)} style={{ display: "flex", alignItems: "center", gap: 6, background: showMA20 ? "#818cf822" : "#080d18", border: `1px solid ${showMA20 ? "#818cf866" : "#1e293b"}`, borderRadius: 20, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
+                    <span style={{ display: "inline-block", width: 16, height: 2, background: showMA20 ? "#818cf8" : "#374151", borderRadius: 1, flexShrink: 0, borderTop: "2px dashed currentColor" }} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: showMA20 ? "#818cf8" : "#4b5563" }}>MA20</span>
+                    <span style={{ fontSize: 9, color: showMA20 ? "#3730a3" : "#374151" }}>20-day avg · long trend</span>
+                  </button>
                 </div>
               </div>
+              {/* MA explanation strip — shown when either is on */}
+              {(showMA7 || showMA20) && !chartLoading && chartData.length >= 2 && (() => {
+                const last = chartData[chartData.length - 1].price;
+                const lastMA7  = [...chartWithMA].reverse().find(p => p.ma7  != null)?.ma7;
+                const lastMA20 = [...chartWithMA].reverse().find(p => p.ma20 != null)?.ma20;
+                return (
+                  <div style={{ marginTop: 8, padding: "8px 14px", background: "#060a12", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11, color: "#4b5563", lineHeight: 1.6 }}>
+                    💡 <b style={{ color: "#6b7280" }}>What do averages mean?</b> When the price line is <span style={{ color: "#34d399" }}>above</span> an average, buyers are winning. When it's <span style={{ color: "#f87171" }}>below</span>, sellers are winning.
+                    {showMA7  && lastMA7  != null && <span> · MA7 now at <b style={{ color: "#fbbf24" }}>${fmt2(lastMA7)}</b> — price is {last >= lastMA7 ? <span style={{ color: "#34d399" }}>above ↑ bullish</span> : <span style={{ color: "#f87171" }}>below ↓ bearish</span>}</span>}
+                    {showMA20 && lastMA20 != null && <span> · MA20 now at <b style={{ color: "#818cf8" }}>${fmt2(lastMA20)}</b> — price is {last >= lastMA20 ? <span style={{ color: "#34d399" }}>above ↑ bullish</span> : <span style={{ color: "#f87171" }}>below ↓ bearish</span>}</span>}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Fundamentals + Peers side by side */}
